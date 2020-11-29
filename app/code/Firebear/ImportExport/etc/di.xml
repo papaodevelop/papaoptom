@@ -339,6 +339,13 @@
             </argument>
         </arguments>
     </type>
+    <type name="Firebear\ImportExport\Model\Export\Order">
+        <arguments>
+            <argument name="data" xsi:type="array">
+                <item name="attribute_collection" xsi:type="object">Magento\Catalog\Model\ResourceModel\Product\Attribute\Collection</item>
+            </argument>
+        </arguments>
+    </type>
     <type name="Magento\Framework\View\Asset\Minification">
         <plugin name="excludeFilesFromMinification"
                 type="Firebear\ImportExport\Plugin\Framework\View\Asset\ExcludeFilesFromMinification"/>
@@ -352,8 +359,6 @@
                 type="Firebear\ImportExport\Model\Import\Product\UrlKeyManager" />
     <preference for="Firebear\ImportExport\Api\JobManagementInterface"
                 type="Firebear\ImportExport\Model\Job\Management" />
-    <preference for="Magento\CatalogUrlRewrite\Observer\AfterImportDataObserver"
-                type="Firebear\ImportExport\Observer\AfterImportDataObserver" />
     <type name="Firebear\ImportExport\Model\Import\UrlRewrite\EntityHandler">
         <arguments>
             <argument name="handlers" xsi:type="array">
@@ -361,6 +366,7 @@
                 <item name="category" xsi:type="object">Firebear\ImportExport\Model\Import\UrlRewrite\EntityHandler\Category</item>
                 <item name="cms" xsi:type="object">Firebear\ImportExport\Model\Import\UrlRewrite\EntityHandler\Cms</item>
                 <item name="custom" xsi:type="object">Firebear\ImportExport\Model\Import\UrlRewrite\EntityHandler\CustomUrlRewrite</item>
+                <item name="common" xsi:type="object">Firebear\ImportExport\Model\Import\UrlRewrite\EntityHandler\Common</item>
             </argument>
         </arguments>
     </type>
@@ -474,5 +480,44 @@
     <type name="Magento\InventoryCache\Model\FlushCacheByProductIds">
         <plugin name="firebear-import-flush-cache-by-product-ids"
                 type="Firebear\ImportExport\Plugin\Model\Import\FlushCacheByProductIds"/>
+    </type>
+    <type name="Firebear\ImportExport\Model\Email\Sender">
+        <arguments>
+            <argument name="options" xsi:type="array">
+                <item name="import" xsi:type="object">Firebear\ImportExport\Ui\Component\Listing\Column\Import\Source\Entity\Options\Proxy</item>
+                <item name="export" xsi:type="object">Firebear\ImportExport\Ui\Component\Listing\Column\Entity\Export\Options\Proxy</item>
+            </argument>
+        </arguments>
+    </type>
+    <type name="Firebear\ImportExport\Model\Email\EmailMessageInterfaceFactory">
+        <arguments>
+            <argument name="instanceName" xsi:type="string">Magento\Framework\Mail\EmailMessageInterface</argument>
+        </arguments>
+    </type>
+    <type name="Firebear\ImportExport\Model\Email\MimeMessageInterfaceFactory">
+        <arguments>
+            <argument name="instanceName" xsi:type="string">Magento\Framework\Mail\MimeMessageInterface</argument>
+        </arguments>
+    </type>
+    <type name="Firebear\ImportExport\Model\Email\MimePartInterfaceFactory">
+        <arguments>
+            <argument name="instanceName" xsi:type="string">Magento\Framework\Mail\MimePartInterface</argument>
+        </arguments>
+    </type>
+    <type name="Magento\CatalogImportExport\Model\StockItemImporterInterface">
+        <plugin name="importStockItemDataForSourceItem" disabled="true" />
+        <plugin name="importStockItemDataForSourceItemUpdate" type="Firebear\ImportExport\Plugin\Import\SourceItemImporter" />
+    </type>
+    <type name="Magento\Catalog\Model\Product\Action">
+        <plugin name="fb_update_attributes"  type="Firebear\ImportExport\Plugin\Import\Action" />
+    </type>
+    <type name="Magento\InventoryCatalog\Model\BulkSourceUnassign">
+        <plugin name="fb_update_source_unassign"  type="Firebear\ImportExport\Plugin\Import\BulkSource" />
+    </type>
+    <type name="Magento\InventoryCatalog\Model\BulkSourceAssign">
+        <plugin name="fb_update_source_assign"  type="Firebear\ImportExport\Plugin\Import\BulkSource" />
+    </type>
+    <type name="Magento\InventoryCatalog\Model\BulkInventoryTransfer">
+        <plugin name="fb_update_source_transfer"  type="Firebear\ImportExport\Plugin\Import\BulkSource" />
     </type>
 </config>

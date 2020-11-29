@@ -470,7 +470,7 @@ class Attribute extends AbstractEntity implements ImportAdapterInterface
     public function getBehavior(array $rowData = null)
     {
         if (!isset($this->_parameters['behavior']) ||
-            $this->_parameters['behavior'] != Import::BEHAVIOR_ADD_UPDATE &&
+            $this->_parameters['behavior'] != Import::BEHAVIOR_APPEND &&
             $this->_parameters['behavior'] != Import::BEHAVIOR_REPLACE &&
             $this->_parameters['behavior'] != Import::BEHAVIOR_DELETE
         ) {
@@ -510,7 +510,8 @@ class Attribute extends AbstractEntity implements ImportAdapterInterface
                             $this->_prepareDataForReplace($rowData)
                         );
                         break;
-                    case Import::BEHAVIOR_ADD_UPDATE:
+                    case Import::getDefaultBehavior():
+                    case Import::BEHAVIOR_APPEND:
                         $this->_saveAttribute(
                             $this->_prepareDataForUpdate($rowData)
                         );
@@ -610,7 +611,7 @@ class Attribute extends AbstractEntity implements ImportAdapterInterface
             case Import::BEHAVIOR_REPLACE:
                 $this->_validateRowForReplace($rowData, $rowNumber);
                 break;
-            case Import::BEHAVIOR_ADD_UPDATE:
+            case Import::BEHAVIOR_APPEND:
                 $this->_validateRowForUpdate($rowData, $rowNumber);
                 break;
         }
@@ -641,6 +642,13 @@ class Attribute extends AbstractEntity implements ImportAdapterInterface
             'StringLength',
             ['min' => $minLength, 'max' => $maxLength]
         );
+
+        if (!preg_match("/^[a-zA-Z]+[a-zA-Z0-9_]+$/", $code)) {
+            $errorMessage = __(
+                'use (a-z or A-Z), (0-9), (_) in attribute_code field, and the first character should be a letter.'
+            );
+            $this->addRowError($errorMessage, $rowNumber);
+        }
 
         if (!$isAllowedLength) {
             $errorMessage = __(
@@ -1068,7 +1076,7 @@ class Attribute extends AbstractEntity implements ImportAdapterInterface
         }
 
         if (!empty($rowData[self::COLUMN_ATTRIBUTE_DELETE_VALUES])) {
-            if ($this->getBehavior() == Import::BEHAVIOR_ADD_UPDATE) {
+            if ($this->getBehavior() == Import::BEHAVIOR_APPEND) {
                 $valuesForDelete = array_map('trim', explode(',', $rowData[self::COLUMN_ATTRIBUTE_DELETE_VALUES]));
                 $optionIdsForDelete = [];
                 $valueIdsForDelete = [];

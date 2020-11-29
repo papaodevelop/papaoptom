@@ -31,6 +31,11 @@ class CmsPage extends AbstractEntity implements EntityInterface
     use ExportTrait;
 
     /**
+     * Column cms store_view_code.
+     */
+    const COL_STORE_VIEW_CODE = 'store_view_code';
+
+    /**
      * @var Collection
      */
     protected $entityCollection;
@@ -60,6 +65,7 @@ class CmsPage extends AbstractEntity implements EntityInterface
     protected $pageFields = [
         PageInterface::PAGE_ID,
         PageInterface::IDENTIFIER,
+        self::COL_STORE_VIEW_CODE,
         PageInterface::TITLE,
         PageInterface::PAGE_LAYOUT,
         PageInterface::META_TITLE,
@@ -149,6 +155,9 @@ class CmsPage extends AbstractEntity implements EntityInterface
         $writer = $this->getWriter();
         $page = 0;
         $counts = 0;
+        if (isset($this->_parameters['export_filter'][self::COL_STORE_VIEW_CODE])) {
+            $fieldForStoreFilter = $this->getFieldForStoreFilter();
+        }
         while (true) {
             ++$page;
             $entityCollection = $this->_getEntityCollection(true);
@@ -175,6 +184,27 @@ class CmsPage extends AbstractEntity implements EntityInterface
                     $entityCollection->addFieldToFilter(
                         PageInterface::IDENTIFIER,
                         ['eq' => $this->_parameters['export_filter'][PageInterface::IDENTIFIER]]
+                    );
+                }
+
+                if (isset($this->_parameters['export_filter'][self::COL_STORE_VIEW_CODE])) {
+                    $entityCollection->getSelect()->joinLeft(
+                        ['cps' => 'cms_page_store'],
+                        "main_table.$fieldForStoreFilter = cps.$fieldForStoreFilter",
+                        ['cps.store_id']
+                    )->joinLeft(
+                        ['s' => 'store'],
+                        'cps.store_id = s.store_id',
+                        ['s.code']
+                    )->group('main_table.page_id');
+
+                    if ($this->_parameters['export_filter'][self::COL_STORE_VIEW_CODE] == 'All') {
+                        $this->_parameters['export_filter'][self::COL_STORE_VIEW_CODE] = 'admin';
+                    }
+
+                    $entityCollection->addFieldToFilter(
+                        's.code',
+                        ['eq' => $this->_parameters['export_filter'][self::COL_STORE_VIEW_CODE]]
                     );
                 }
 
@@ -245,6 +275,19 @@ class CmsPage extends AbstractEntity implements EntityInterface
         $this->_getEntityCollection()
             ->setCurPage($page)
             ->setPageSize($pageSize);
+    }
+
+    /**
+     * @return string
+     */
+    protected function getFieldForStoreFilter()
+    {
+        $field = 'page_id';
+        $fields = $this->_connection->describeTable('cms_page_store');
+        if (isset($fields['row_id'])) {
+            $field = 'row_id';
+        }
+        return $field;
     }
 
     /**
@@ -438,6 +481,7 @@ class CmsPage extends AbstractEntity implements EntityInterface
             }
             $options['cms_page'][] = ['field' => $key, 'type' => $type, 'select' => $select];
         }
+        $options['cms_page'][] = ['field' => self::COL_STORE_VIEW_CODE, 'type' => 'text'];
 
         return $options;
     }

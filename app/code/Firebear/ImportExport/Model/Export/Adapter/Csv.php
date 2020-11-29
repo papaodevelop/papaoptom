@@ -6,9 +6,12 @@
 
 namespace Firebear\ImportExport\Model\Export\Adapter;
 
+use Magento\Framework\Exception\FileSystemException;
+use Magento\Framework\Exception\ValidatorException;
 use Magento\Framework\Filesystem;
 use Magento\ImportExport\Model\Export\Adapter\Csv as AbstractAdapter;
 use Magento\Framework\App\CacheInterface;
+use Psr\Log\LoggerInterface;
 
 /**
  * Csv Export Adapter
@@ -26,19 +29,25 @@ class Csv extends AbstractAdapter
      * @var \Magento\Framework\App\CacheInterface
      */
     protected $_cache;
+    /**
+     * @var LoggerInterface
+     */
+    private $logger;
 
     /**
      * Initialize Adapter
      *
      * @param Filesystem $filesystem
      * @param CacheInterface $cache
+     * @param LoggerInterface $logger
      * @param null $destination
-     * @param [] $data
+     * @param array $data
      * @throws \Magento\Framework\Exception\LocalizedException
      */
     public function __construct(
         Filesystem $filesystem,
         CacheInterface $cache,
+        LoggerInterface $logger,
         $destination = null,
         array $data = []
     ) {
@@ -54,6 +63,7 @@ class Csv extends AbstractAdapter
             $filesystem,
             $destination
         );
+        $this->logger = $logger;
     }
 
     /**
@@ -82,5 +92,19 @@ class Csv extends AbstractAdapter
             $this->_enclosure
         );
         return $this;
+    }
+
+    /**
+     * Remove temp file after export
+     */
+    public function __destruct()
+    {
+        try {
+            $this->_directoryHandle->delete($this->_destination);
+        } catch (FileSystemException $exception) {
+            $this->logger->warning($exception->getMessage());
+        } catch (ValidatorException $exception) {
+            $this->logger->warning($exception->getMessage());
+        }
     }
 }

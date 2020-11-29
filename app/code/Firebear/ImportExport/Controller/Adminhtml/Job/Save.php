@@ -64,6 +64,8 @@ class Save extends JobController
         'disable_products',
         'product_supplier',
         'send_email',
+        'generate_shipment_by_track',
+        'generate_invoice_by_track',
         'translate_attributes',
         'translate_store_ids',
         'translate_version',
@@ -71,7 +73,17 @@ class Save extends JobController
         'translate_referer',
         'xlsx_sheet',
         'cron_groups',
-        'image_resize'
+        'email_type',
+        'template',
+        'receiver',
+        'sender',
+        'copy',
+        'copy_method',
+        'is_attach',
+        'image_resize',
+        'deferred_images',
+        'cache_products',
+        'increase_product_stock_by_qty'
     ];
 
     /**

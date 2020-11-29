@@ -89,6 +89,7 @@ class ImportJobRunCommand extends ImportJobAbstractCommand
                 $this->processor->processScope($id, $file);
                 $counter = $this->helper->countData($file, $job->getId());
                 $error = 0;
+                $result = false;
                 for ($i = 0; $i < $counter; $i++) {
                     list($count, $result) = $this->helper->processImport($file, $job->getId(), $i, $error, 0);
                     $error += $count;
@@ -104,6 +105,12 @@ class ImportJobRunCommand extends ImportJobAbstractCommand
                 $this->processor->getImportModel()->getErrorAggregator()->clear();
                 $this->processor->getImportModel()->setNullEntityAdapter();
                 $this->helper->saveFinishHistory($history);
+
+                $this->sender->sendEmail(
+                    $job,
+                    $file,
+                    (int)$result
+                );
             }
         } else {
             $this->addLogComment('No jobs found', $output, 'error');

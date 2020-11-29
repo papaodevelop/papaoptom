@@ -120,7 +120,7 @@ trait Entity
                         }
                     }
                 }
-
+                //@todo more improvements required here in case of customPlatform interface more dynamic
                 $this->addErrors(self::ERROR_CODE_INVALID_ATTRIBUTE, $invalidAttributes);
                 $this->addErrors(self::ERROR_CODE_COLUMN_EMPTY_HEADER, $emptyHeaderColumns);
                 if (!$platform
@@ -138,12 +138,14 @@ trait Entity
 
             if (!$this->getErrorAggregator()->getErrorsCount()) {
                 if ($saveBunches) {
+                    $maxDataSize = isset($this->_maxDataSize) ?: $this->_resourceHelper->getMaxDataSize();
+                    $maxBunchSize = isset($this->_bunchSize) ?: $this->_importExportData->getBunchSize();
                     $this->addLogWriteln(__('Start saving bunches'), $this->output);
                     if ($platform && method_exists($platform, 'saveValidatedBunches')) {
                         $platform->saveValidatedBunches(
                             $this->_source,
-                            $this->_resourceHelper->getMaxDataSize(),
-                            $this->_importExportData->getBunchSize(),
+                            $maxDataSize,
+                            $maxBunchSize,
                             $this->_dataSourceModel,
                             $this->_parameters,
                             $this->getEntityTypeCode(),

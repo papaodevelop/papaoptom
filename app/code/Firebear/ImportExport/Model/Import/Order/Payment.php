@@ -25,6 +25,12 @@ class Payment extends AbstractAdapter
     const ENTITY_TYPE_CODE = 'order';
 
     /**
+     * Prefix of Fields
+     *
+     */
+    const PREFIX = 'payment';
+
+    /**
      * Entity Id Column Name
      */
     const COLUMN_ENTITY_ID = 'entity_id';
@@ -87,8 +93,8 @@ class Payment extends AbstractAdapter
      */
     public function prepareRowData(array $rowData)
     {
-        parent::prepareRowData($rowData);
-        $rowData = $this->_extractField($rowData, 'payment');
+        $this->prepareCurrentOrderId($rowData);
+        $rowData = $this->_extractField($rowData, static::PREFIX);
         if (!empty($rowData['additional_information'])) {
             if ($this->isSerialized($rowData['additional_information'])) {
                 $rowData['additional_information'] = $this->jsonSerializer

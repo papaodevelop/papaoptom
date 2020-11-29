@@ -19,6 +19,12 @@ class Address extends AbstractAdapter
     const ENTITY_TYPE_CODE = 'order';
 
     /**
+     * Prefix of Fields
+     *
+     */
+    const PREFIX = 'address';
+
+    /**
      * Entity Id Column Name
      *
      */
@@ -77,8 +83,8 @@ class Address extends AbstractAdapter
      */
     public function prepareRowData(array $rowData)
     {
-        parent::prepareRowData($rowData);
-        $rowData = $this->_extractField($rowData, 'address');
+        $this->prepareCurrentOrderId($rowData);
+        $rowData = $this->_extractField($rowData, static::PREFIX);
         return (count($rowData) && !$this->isEmptyRow($rowData))
             ? $rowData
             : false;
@@ -97,19 +103,23 @@ class Address extends AbstractAdapter
             $toDelete = [];
             $toBilling = [];
             $toShipping = [];
-            $existingEntityIds = [];
+            $existingIncrementIds = [];
 
             if ($this->getBehavior() == Import::BEHAVIOR_REPLACE) {
                 $incrementIds = array_filter(array_column($bunch, 'increment_id'));
                 $existingIds = $this->getExistingIds($incrementIds);
-                $existingEntityIds = array_filter(array_column($existingIds, 'entity_id'));
+                $existingIncrementIds = array_filter(array_column($existingIds, 'increment_id'));
             }
             foreach ($bunch as $rowNumber => $rowData) {
-                $rowData = $this->prepareRowData($rowData);
-                if ($this->getBehavior() == Import::BEHAVIOR_REPLACE &&
-                    !in_array($rowData['parent_id'], $existingEntityIds)) {
-                    continue;
+                $this->prepareCurrentOrderId($rowData);
+                if (!empty($this->_currentOrderId)) {
+                    if ($this->getBehavior() == Import::BEHAVIOR_REPLACE
+                        && !in_array($this->_currentOrderId, $existingIncrementIds)) {
+                        continue;
+                    }
                 }
+
+                $rowData = $this->prepareRowData($rowData);
                 /* validate data */
                 if (!$rowData || !$this->validateRow($rowData, $rowNumber)) {
                     continue;

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * @copyright: Copyright © 2017 Firebear Studio. All rights reserved.
  * @author   : Firebear Studio <fbeardev@gmail.com>
@@ -10,6 +11,7 @@ use DateTime;
 use Exception;
 use Firebear\ImportExport\Traits\General as GeneralTrait;
 use Magento\Eav\Model\Entity\Collection\AbstractCollection;
+use Magento\Store\Model\Store;
 use Magento\Framework\Data\Collection\AbstractDb;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\ImportExport\Model\Export;
@@ -128,12 +130,12 @@ trait Entity
             }
         }
 
-        $noFullList = array_diff($listCodes, array_keys($newRecord));
-        if (!empty($noFullList)) {
-            foreach ($noFullList as $code => $value) {
-                $newRecord[$code] = $value;
-            }
-        }
+//        $noFullList = array_diff($listCodes, array_keys($newRecord));
+//        if (!empty($noFullList)) {
+//            foreach ($noFullList as $code => $value) {
+//                $newRecord[$code] = $value;
+//            }
+//        }
 
         return $newRecord;
     }
@@ -291,6 +293,19 @@ trait Entity
     public function getFieldsForFilter()
     {
         return [];
+    }
+
+    /**
+     * Retrieve store ids for filter
+     *
+     * @return array
+     */
+    public function getStoreIdsForFilter()
+    {
+        if (!empty($this->_parameters['only_admin'])) {
+            return [Store::DEFAULT_STORE_ID];
+        }
+        return $this->_parameters['behavior_data']['store_ids'] ?? [];
     }
 
     /**

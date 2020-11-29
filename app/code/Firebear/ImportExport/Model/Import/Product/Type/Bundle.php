@@ -155,6 +155,68 @@ class Bundle extends \Magento\BundleImportExport\Model\Import\Product\Type\Bundl
     }
 
     /**
+     * @return $this|ImportProduct\Type\AbstractType
+     */
+    public function saveData()
+    {
+        if ($this->_entityModel->getBehavior() == \Magento\ImportExport\Model\Import::BEHAVIOR_DELETE) {
+            $productIds = [];
+            $newProducts = $this->_entityModel->getNewSku();
+            while ($bunch = $this->_entityModel->getNextBunch()) {
+                foreach ($bunch as $rowNum => $rowData) {
+                    $productData = $newProducts[strtolower($rowData[ImportProduct::COL_SKU])];
+                    $productIds[] = $productData[$this->getProductEntityLinkField()];
+                }
+                $this->deleteOptionsAndSelections($productIds);
+            }
+        } else {
+            $newProducts = $this->_entityModel->getNewSku();
+            while ($bunch = $this->_entityModel->getNextBunch()) {
+                foreach ($bunch as $rowNum => $rowData) {
+                    if (!$this->_entityModel->isRowAllowedToImport($rowData, $rowNum)) {
+                        continue;
+                    }
+                    $productData = $newProducts[strtolower($rowData[ImportProduct::COL_SKU])];
+                    if ($this->_type != $productData['type_id']) {
+                        continue;
+                    }
+                    $this->parseSelections($rowData, $productData[$this->getProductEntityLinkField()]);
+                }
+                if (!empty($this->_cachedOptions)) {
+                    $this->retrieveProductsByCachedSkus();
+                    $this->populateExistingOptions();
+                    $this->insertOptions();
+                    $this->insertSelections();
+                    $this->insertParentChildRelations();
+                    $this->clear();
+                }
+            }
+        }
+        return $this;
+    }
+
+    /**
+     * @return $this|ImportProduct\Type\AbstractType
+     */
+    private function insertParentChildRelations()
+    {
+        foreach ($this->_cachedOptions as $productId => $options) {
+            $childIds = [];
+            foreach ($options as $option) {
+                foreach ($option['selections'] as $selection) {
+                    if (!isset($this->_cachedSkuToProducts[$selection['sku']])) {
+                        continue;
+                    }
+                    $childIds[] = $this->_cachedSkuToProducts[$selection['sku']];
+                }
+                $this->relationsDataSaver->saveProductRelations($productId, $childIds);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
      * Parse the option.
      *
      * @param array $values

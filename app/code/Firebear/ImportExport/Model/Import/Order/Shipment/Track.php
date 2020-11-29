@@ -1,12 +1,14 @@
 <?php
 /**
- * @copyright: Copyright © 2017 Firebear Studio. All rights reserved.
+ * @copyright: Copyright © 2020 Firebear Studio. All rights reserved.
  * @author   : Firebear Studio <fbeardev@gmail.com>
  */
 namespace Firebear\ImportExport\Model\Import\Order\Shipment;
 
 use Firebear\ImportExport\Model\ResourceModel\Order\Helper;
-use Magento\ImportExport\Model\Import;
+use Magento\Framework\DB\TransactionFactory;
+use Magento\Sales\Api\OrderRepositoryInterface;
+use Magento\Sales\Model\Order\ShipmentFactory;
 use Magento\Sales\Model\ResourceModel\Order\Shipment\CollectionFactory as ShipmentCollectionFactory;
 use Magento\Shipping\Model\ShipmentNotifierFactory;
 use Firebear\ImportExport\Model\Import\Order\AbstractAdapter;
@@ -19,37 +21,37 @@ class Track extends AbstractAdapter
 {
     /**
      * Entity Type Code
-     *
      */
     const ENTITY_TYPE_CODE = 'order';
 
     /**
-     * Entity Id Column Name
+     * Prefix of Fields
      *
+     */
+    const PREFIX = 'shipment_track';
+
+    /**
+     * Entity Id Column Name
      */
     const COLUMN_ENTITY_ID = 'entity_id';
 
     /**
      * Shipment Id Column Name
-     *
      */
     const COLUMN_SHIPMENT_ID = 'parent_id';
 
     /**
      * Shipment Increment Id Column Name
-     *
      */
     const COLUMN_SHIPMENT_INCREMENT_ID = 'shipment_increment_id';
 
     /**
      * Order Id Column Name
-     *
      */
     const COLUMN_ORDER_ID = 'order_id';
 
     /**
      * Track Number Column Name
-     *
      */
     const COLUMN_TRACK_NUMBER = 'track_number';
 
@@ -62,8 +64,12 @@ class Track extends AbstractAdapter
     const ERROR_ORDER_ID_IS_EMPTY = 'shipmentTrackOrderIdIsEmpty';
     const ERROR_TRACK_NUMBER_IS_EMPTY = 'shipmentTrackNumberIsEmpty';
     const ERROR_SHIPMENT_INCREMENT_ID = 'shipmentTrackIncrementId';
+    const ERROR_ORDER_INCREMENT_ID = 'orderTrackIncrementId';
     const ERROR_SHIPMENT_COUNT = 'shipmentItemCount';
     const ERROR_SHIPMENT_IS_EMPTY = 'shipmentItemIsEmpty';
+    const ERROR_SKUS_INCORRECT = 'skusIncorrect';
+    const ERROR_QTY_INCORRECT = 'qtyIncorrect';
+    const ERROR_SKU_NOT_FOUND = 'skuNotFound';
 
     /**
      * Validation Failure Message Template Definitions
@@ -77,8 +83,12 @@ class Track extends AbstractAdapter
         self::ERROR_ORDER_ID_IS_EMPTY => 'Shipment Track order_id is empty',
         self::ERROR_TRACK_NUMBER_IS_EMPTY => 'Shipment Track track_number is empty',
         self::ERROR_SHIPMENT_INCREMENT_ID => 'Shipment with selected shipment:increment_id does not exist',
+        self::ERROR_ORDER_INCREMENT_ID => 'Order with selected increment_id does not exist',
         self::ERROR_SHIPMENT_COUNT => 'Order has more than 1 Shipment. please specify Shipment ID.',
         self::ERROR_SHIPMENT_IS_EMPTY => 'Order does not have Shipment.',
+        self::ERROR_SKUS_INCORRECT => 'Skus string is incorrect.',
+        self::ERROR_QTY_INCORRECT => 'Product with sku %s has incorrect qty.',
+        self::ERROR_SKU_NOT_FOUND => 'Product with sku %s does not exist.',
     ];
 
     /**
@@ -89,57 +99,85 @@ class Track extends AbstractAdapter
     protected $_mainTable = 'sales_shipment_track';
 
     /**
-     * Resource Connection
-     *
-     * @var \Magento\Framework\App\ResourceConnection
-     */
-    protected $_resource;
-
-    /**
      * Shipment Collection
      *
      * @var \Magento\Sales\Model\ResourceModel\Order\Shipment\Collection;
      */
-    protected $_shipmentCollection;
+    protected $shipmentCollection;
 
     /**
      * Shipment Collection Factory
      *
      * @var \Magento\Sales\Model\ResourceModel\Order\Shipment\CollectionFactory;
      */
-    protected $_shipmentCollectionFactory;
+    protected $shipmentCollectionFactory;
 
     /**
      * Shipment Notifier
      *
      * @var \Magento\Shipping\Model\ShipmentNotifier;
      */
-    protected $_notifier;
+    protected $notifier;
 
     /**
      * Shipment Notifier Factory
      *
      * @var \Magento\Shipping\Model\ShipmentNotifierFactory;
      */
-    protected $_notifierFactory;
+    protected $notifierFactory;
 
     /**
-     * Track constructor.
+     * Shipment Factory
+     *
+     * @var ShipmentFactory
+     */
+    protected $shipmentFactory;
+
+    /**
+     * Order Repository
+     *
+     * @var OrderRepositoryInterface
+     */
+    protected $orderRepository;
+
+    /**
+     * Transaction Factory
+     *
+     * @var TransactionFactory
+     */
+    protected $transactionFactory;
+
+    /**
+     * Track constructor
+     *
      * @param Context $context
      * @param Helper $resourceHelper
      * @param ShipmentCollectionFactory $shipmentCollectionFactory
      * @param ShipmentNotifierFactory $notifierFactory
+     * @param ShipmentFactory $shipmentFactory
+     * @param OrderRepositoryInterface $orderRepository
+     * @param TransactionFactory $transactionFactory
      * @throws \Magento\Framework\Exception\LocalizedException
      */
     public function __construct(
         Context $context,
         Helper $resourceHelper,
         ShipmentCollectionFactory $shipmentCollectionFactory,
-        ShipmentNotifierFactory $notifierFactory
+        ShipmentNotifierFactory $notifierFactory,
+        ShipmentFactory $shipmentFactory,
+        OrderRepositoryInterface $orderRepository,
+        TransactionFactory $transactionFactory
     ) {
-        $this->_shipmentCollectionFactory = $shipmentCollectionFactory;
-        $this->_notifierFactory = $notifierFactory;
-        parent::__construct($context, $resourceHelper);
+        $this->shipmentCollectionFactory = $shipmentCollectionFactory;
+        $this->notifierFactory = $notifierFactory;
+        $this->shipmentFactory = $shipmentFactory;
+        $this->orderRepository = $orderRepository;
+        $this->transactionFactory = $transactionFactory;
+
+        parent::__construct(
+            $context,
+            $resourceHelper
+        );
     }
 
     /**
@@ -150,8 +188,8 @@ class Track extends AbstractAdapter
      */
     public function prepareRowData(array $rowData)
     {
-        parent::prepareRowData($rowData);
-        $rowData = $this->_extractField($rowData, 'shipment_track');
+        $this->prepareCurrentOrderId($rowData);
+        $rowData = $this->_extractField($rowData, static::PREFIX);
         return (count($rowData) && !$this->isEmptyRow($rowData))
             ? $rowData
             : false;
@@ -181,6 +219,22 @@ class Track extends AbstractAdapter
     }
 
     /**
+     * Retrieve item skus
+     *
+     * @param string $skus
+     * @return array
+     */
+    protected function getSkus($skus)
+    {
+        $data = [];
+        foreach (explode(';', $skus) as $row) {
+            list($sku, $qty) = explode(':', $row);
+            $data[$sku] = $qty;
+        }
+        return $data;
+    }
+
+    /**
      * Prepare Data For Update
      *
      * @param array $rowData
@@ -199,6 +253,7 @@ class Track extends AbstractAdapter
                 $this->shipmentIdsMap[$shipmentId] = $shipmentId;
             }
             $rowData[self::COLUMN_SHIPMENT_ID] = $shipmentId;
+
             if (empty($rowData[self::COLUMN_ORDER_ID])) {
                 $orderId = $this->_getOrderIdByShipment($rowData);
                 if (empty($this->orderIdsMap[$orderId])) {
@@ -206,12 +261,95 @@ class Track extends AbstractAdapter
                 }
                 $rowData[self::COLUMN_ORDER_ID] = $orderId;
             }
-        } elseif (!empty($this->_currentOrderId) && empty($this->_currentShipmentId)) {
-            $shipmentId = $this->_getShipmentIdByOrder();
+
             if (empty($this->shipmentIdsMap[$shipmentId])) {
                 $this->shipmentIdsMap[$shipmentId] = $shipmentId;
             }
             $rowData[self::COLUMN_SHIPMENT_ID] = $shipmentId;
+        }
+
+        if (!empty($this->_currentOrderId)) {
+            $itemsToShip = [];
+            $itemsToInvoice = [];
+            $order = null;
+            /* create order */
+            if ((!empty($this->_parameters['generate_shipment_by_track']) ||
+                !empty($this->_parameters['generate_invoice_by_track'])) &&
+                !empty($rowData['skus'])
+            ) {
+                $order = $this->orderRepository->get(
+                    $this->_getExistOrderId()
+                );
+
+                $data = $this->getSkus($rowData['skus']);
+                foreach ($order->getAllVisibleItems() as $item) {
+                    if (!isset($data[$item->getSku()])) {
+                        continue;
+                    }
+
+                    if ($item->canShip()) {
+                        $qty = min($data[$item->getSku()], $item->getQtyToShip());
+                        if (0 < $qty) {
+                            $itemsToShip[$item->getId()] = $qty;
+                        }
+                    }
+
+                    if ($item->canInvoice()) {
+                        $qty = min($data[$item->getSku()], $item->getQtyToInvoice());
+                        if (0 < $qty) {
+                            $itemsToInvoice[$item->getId()] = $qty;
+                        }
+                    }
+                }
+            }
+
+            /* create shipment */
+            if (!empty($this->_parameters['generate_shipment_by_track']) &&
+                empty($this->_currentShipmentId) &&
+                0 < count($itemsToShip)
+            ) {
+                $shipment = $this->shipmentFactory->create($order, $itemsToShip);
+                if ($shipment->getTotalQty()) {
+                    $shipment->register();
+
+                    $transaction = $this->transactionFactory->create();
+                    $transaction->addObject(
+                        $shipment
+                    )->addObject(
+                        $order
+                    )->save();
+
+                    $shipmentId = $shipment->getId();
+                    if (empty($this->shipmentIdsMap[$shipmentId])) {
+                        $this->shipmentIdsMap[$shipmentId] = $shipmentId;
+                    }
+                    $rowData[self::COLUMN_SHIPMENT_ID] = $shipmentId;
+                }
+            }
+
+            /* create invoice */
+            if (!empty($this->_parameters['generate_invoice_by_track']) &&
+                0 < count($itemsToInvoice)
+            ) {
+                $invoice = $order->prepareInvoice($itemsToInvoice);
+                if ($invoice->getTotalQty()) {
+                    $invoice->register();
+
+                    $transaction = $this->transactionFactory->create();
+                    $transaction->addObject(
+                        $invoice
+                    )->addObject(
+                        $order
+                    )->save();
+                }
+            }
+        }
+
+        if (empty($rowData[self::COLUMN_SHIPMENT_ID])) {
+            return [
+                self::ENTITIES_TO_CREATE_KEY => [],
+                self::ENTITIES_TO_UPDATE_KEY => []
+            ];
         }
 
         $newEntity = false;
@@ -223,13 +361,15 @@ class Track extends AbstractAdapter
             $key = $rowData[self::COLUMN_ENTITY_ID] ?? $entityId;
             $this->_newEntities[$key] = $entityId;
         }
+
         $entityRow = [
             'created_at' => $createdAt,
             'updated_at' => $updatedAt,
             'entity_id' => $entityId,
             'parent_id' => $this->_getShipmentId($rowData),
-            'order_id' => $this->_getOrderId($rowData)
+            'order_id' => $this->_getExistOrderId()
         ];
+
         /* prepare data */
         $entityRow = $this->_prepareEntityRow($entityRow, $rowData);
         if ($newEntity) {
@@ -253,12 +393,18 @@ class Track extends AbstractAdapter
     protected function _validateRowForUpdate(array $rowData, $rowNumber)
     {
         if (!empty($rowData[self::COLUMN_SHIPMENT_INCREMENT_ID])) {
+            /* check there is real shipment */
             if (!$this->_getExistShipmentId($rowData)) {
                 $this->addRowError(self::ERROR_SHIPMENT_INCREMENT_ID, $rowNumber);
             }
-        } elseif (!empty($this->_currentOrderId) && empty($this->_currentShipmentId)) {
+        } elseif (!empty($this->_currentOrderId) && !empty($rowData['skus'])) {
+            /* check there is real order */
+            if (!$this->_getExistOrderId()) {
+                $this->addRowError(self::ERROR_ORDER_INCREMENT_ID, $rowNumber);
+            }
+
             $shipmentCount = $this->_getShipmentCount();
-            if (1 < $shipmentCount) {
+            if (empty($this->_currentShipmentId) && 1 < $shipmentCount) {
                 $this->addRowError(self::ERROR_SHIPMENT_COUNT, $rowNumber);
             }
         } elseif ($this->_checkEntityIdKey($rowData, $rowNumber)) {
@@ -270,8 +416,25 @@ class Track extends AbstractAdapter
                 $this->addRowError(self::ERROR_ORDER_ID_IS_EMPTY, $rowNumber);
             }
         }
+
         if (empty($rowData[self::COLUMN_TRACK_NUMBER])) {
             $this->addRowError(self::ERROR_TRACK_NUMBER_IS_EMPTY, $rowNumber);
+        }
+
+        if (!empty($rowData['skus'])) {
+            if (false === strpos($rowData['skus'], ':')) {
+                $this->addRowError(self::ERROR_SKUS_INCORRECT, $rowNumber);
+            } else {
+                $data = $this->getSkus($rowData['skus']);
+                foreach ($data as $sku => $qty) {
+                    if (!is_numeric($qty) || 1 > $qty) {
+                        $this->addRowError(self::ERROR_QTY_INCORRECT, $rowNumber, $sku);
+                    }
+                    if (!$this->getProductIdBySku($sku)) {
+                        $this->addRowError(self::ERROR_SKU_NOT_FOUND, $rowNumber, $sku);
+                    }
+                }
+            }
         }
     }
 
@@ -290,6 +453,21 @@ class Track extends AbstractAdapter
             ->where('increment_id = :increment_id');
 
         return $this->_connection->fetchOne($select, $bind);
+    }
+
+    /**
+     * Retrieve Order Id If Order Is Present In Database
+     *
+     * @return bool|int
+     */
+    protected function _getExistOrderId()
+    {
+        /** @var $select \Magento\Framework\DB\Select */
+        $select = $this->_connection->select();
+        $select->from($this->getOrderTable(), 'entity_id')
+            ->where('increment_id = ?', $this->_currentOrderId);
+
+        return $this->_connection->fetchOne($select);
     }
 
     /**
@@ -395,10 +573,10 @@ class Track extends AbstractAdapter
      */
     public function getShipmentCollection()
     {
-        if (!$this->_shipmentCollection) {
-            $this->_shipmentCollection = $this->_shipmentCollectionFactory->create();
+        if (!$this->shipmentCollection) {
+            $this->shipmentCollection = $this->shipmentCollectionFactory->create();
         }
-        return $this->_shipmentCollection;
+        return $this->shipmentCollection;
     }
 
     /**
@@ -408,9 +586,9 @@ class Track extends AbstractAdapter
      */
     public function getNotifier()
     {
-        if (!$this->_notifier) {
-            $this->_notifier = $this->_notifierFactory->create();
+        if (!$this->notifier) {
+            $this->notifier = $this->notifierFactory->create();
         }
-        return $this->_notifier;
+        return $this->notifier;
     }
 }

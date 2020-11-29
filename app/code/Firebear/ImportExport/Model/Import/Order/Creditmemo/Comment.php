@@ -20,6 +20,12 @@ class Comment extends AbstractAdapter
     const ENTITY_TYPE_CODE = 'order';
 
     /**
+     * Prefix of Fields
+     *
+     */
+    const PREFIX = 'creditmemo_comment';
+
+    /**
      * Entity Id Column Name
      *
      */
@@ -64,8 +70,8 @@ class Comment extends AbstractAdapter
      */
     public function prepareRowData(array $rowData)
     {
-        parent::prepareRowData($rowData);
-        $rowData = $this->_extractField($rowData, 'creditmemo_comment');
+        $this->prepareCurrentOrderId($rowData);
+        $rowData = $this->_extractField($rowData, static::PREFIX);
         return (count($rowData) && !$this->isEmptyRow($rowData))
             ? $rowData
             : false;

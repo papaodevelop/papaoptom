@@ -25,5 +25,9 @@
                        attr="'data-text-on': toggleLabels.on, 'data-text-off': toggleLabels.off"></span>
             </label>
         </div>
+        <div class="admin__field-tooltip">
+            <a class="admin__field-tooltip-action action-help" target="_blank" tabindex="1" data-bind="attr: {href: tooltip.link}"></a>
+            <div class="admin__field-tooltip-content" data-bind="html: tooltip.description">Defines if export job should process entities in batches of ‘Page size’ value.</div>
+        </div>
     </div>
 </div>

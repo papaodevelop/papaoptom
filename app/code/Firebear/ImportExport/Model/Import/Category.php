@@ -328,6 +328,7 @@ class Category extends AbstractEntity
         if (empty($this->categories)) {
             $stores = $this->storeManager->getStores();
             $searchStores = [\Magento\Store\Model\Store::DEFAULT_STORE_ID];
+            $this->nameToId['admin'] = \Magento\Store\Model\Store::DEFAULT_STORE_ID;
             foreach ($stores as $store) {
                 $this->nameToId[$store->getCode()] = $store->getId();
                 $searchStores[] = $store->getId();
@@ -525,7 +526,7 @@ class Category extends AbstractEntity
     protected function saveCategoriesData()
     {
         $this->_initSourceType('url');
-
+        $groupCategoryId = [];
         while ($bunch = $this->_dataSourceModel->getNextBunch()) {
             $in = 0;
             $up = 0;
@@ -577,9 +578,6 @@ class Category extends AbstractEntity
                 $time = explode(" ", microtime());
                 $startTime = $time[0] + $time[1];
                 $name = $rowData[self::COL_NAME];
-                if (!$this->validateRow($rowData, $rowNum)) {
-                    continue;
-                }
 
                 if ($this->getErrorAggregator()->hasToBeTerminated()) {
                     $this->getErrorAggregator()->addRowToSkip($rowNum);
@@ -605,11 +603,14 @@ class Category extends AbstractEntity
                     if (isset($this->nameToId[$rowData[self::COL_STORE]])) {
                         $rowData['store_id'] = $this->nameToId[$rowData[self::COL_STORE]];
                         unset($rowData[self::COL_STORE]);
+                    } else {
+                        $this->addRowError(
+                            "Store could not find for this category:".$rowData[self::COL_NAME],
+                            $this->_processedRowsCount
+                        );
                     }
                 }
-
                 $rowPath = $rowData[self::COL_NAME];
-
                 if (!empty($rowPath)) {
                     if (is_int($rowPath)) {
                         try {
@@ -650,7 +651,39 @@ class Category extends AbstractEntity
                             self::DELIMITER_CATEGORY,
                             $rowPath
                         );
-                        if (!isset($this->categories[$rowPathWithDefaultDelimiter])) {
+
+                        if (isset($rowData['group']) && !empty($rowData['group'])) {
+                            $catname = $rowData['_actual_name'];
+                            $catid = '';
+                            if (isset($groupCategoryId[$rowData['group']])
+                                && !empty($groupCategoryId[$rowData['group']])) {
+                                $catid = $groupCategoryId[$rowData['group']];
+                            }
+                            if (!$catid) {
+                                $catid = isset($this->categories[$rowPath])
+                                ? $this->categories[$rowPath] :'';
+                            }
+
+                            if ($catid) {
+                                //update
+                                ++$up;
+                                $result = $this->updateCategoriesByPath($rowPathWithDefaultDelimiter, $rowData, $catid);
+                                $result = true;
+                                $groupCategoryId[$rowData['group']] = $catid;
+                            } else {
+                                //insert
+                                ++$in;
+                                $result = $this->prepareCategoriesByPath($rowPath, $rowData);
+                                $groupCategoryId[$rowData['group']] = $result;
+                            }
+                        } elseif (isset($rowData['entity_id']) && !empty($rowData['entity_id'])) {
+                              ++$up;
+                            $result = $this->updateCategoriesByPath(
+                                $rowPathWithDefaultDelimiter,
+                                $rowData,
+                                $rowData['entity_id']
+                            );
+                        } elseif (!isset($this->categories[$rowPathWithDefaultDelimiter])) {
                             ++$in;
                             $result = $this->prepareCategoriesByPath($rowPath, $rowData);
                         } else {
@@ -764,6 +797,7 @@ class Category extends AbstractEntity
                     if (!empty($rowData[self::COL_STORE_NAME])) {
                         $this->updateCategoriesByPath($rowPath, $rowData);
                     }
+                    $result = $category->getId();
                 } catch (\Exception $e) {
                     $this->getErrorAggregator()->addError(
                         $e->getCode(),
@@ -793,10 +827,14 @@ class Category extends AbstractEntity
      *
      * @return bool
      */
-    protected function updateCategoriesByPath($rowPath, $rowData)
+    protected function updateCategoriesByPath($rowPath, $rowData, $entityid = 0)
     {
         $result = true;
-        $categoryId = $this->categories[$rowPath];
+        if ($entityid) {
+            $categoryId = $entityid;
+        } else {
+            $categoryId = $this->categories[$rowPath];
+        }
         $category = $this->categoryFactory->create()->setStoreId($rowData['store_id'])->load($categoryId);
         /**
          * Avoid changing category name and path
@@ -805,9 +843,18 @@ class Category extends AbstractEntity
             $rowData[self::COL_NAME] = $rowData[self::COL_STORE_NAME];
             unset($rowData[self::COL_STORE_NAME]);
         } elseif (isset($rowData[self::COL_NAME])) {
-            unset($rowData[self::COL_NAME]);
+            if ($entityid) {
+                //update store view category name so no need to add name
+                $categoryname = isset($rowData['_actual_name'])
+                ? $rowData['_actual_name'] : $rowData[self::COL_NAME];
+                $rowData[self::COL_NAME] = $categoryname;
+            } else {
+                unset($rowData[self::COL_NAME]);
+            }
         }
-
+        if (isset($rowData[self::COL_STORE]) && empty($rowData[self::COL_STORE])) {
+            unset($rowData[self::COL_STORE]);
+        }
         if (isset($rowData[self::COL_PATH])) {
             unset($rowData[self::COL_PATH]);
         }
@@ -1092,13 +1139,15 @@ class Category extends AbstractEntity
                     $this->urlComparableList['url_key'][$storeCode][] = $rowData[self::COL_URL] ?? '';
                 }
             } else {
-                if ((isset($rowData[self::COL_URL_PATH]) && !empty($rowData[self::COL_URL_PATH])
-                    && in_array($rowData[self::COL_URL_PATH], $this->urlComparableList['url_path'][$storeCode]))
-                    || ($this->isUrlRequestPathDuplicateMage($rowData[self::COL_URL_PATH], $rowData))
-                ) {
-                    $rowData = $this->generateUrlKeyOrError($rowData, $storeCode, $rowNum);
-                } else {
-                    $this->urlComparableList['url_path'][$storeCode][] = $rowData[self::COL_URL_PATH] ?? '';
+                if (isset($rowData[self::COL_URL_PATH])) {
+                    if ((isset($rowData[self::COL_URL_PATH]) && !empty($rowData[self::COL_URL_PATH])
+                        && in_array($rowData[self::COL_URL_PATH], $this->urlComparableList['url_path'][$storeCode]))
+                        || ($this->isUrlRequestPathDuplicateMage($rowData[self::COL_URL_PATH], $rowData))
+                    ) {
+                        $rowData = $this->generateUrlKeyOrError($rowData, $storeCode, $rowNum);
+                    } else {
+                        $this->urlComparableList['url_path'][$storeCode][] = $rowData[self::COL_URL_PATH] ?? '';
+                    }
                 }
             }
         }

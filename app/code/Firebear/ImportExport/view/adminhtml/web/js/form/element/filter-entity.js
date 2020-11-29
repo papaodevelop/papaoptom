@@ -127,16 +127,18 @@ define(
                                 observable = config;
                             }
                             $(el).calendar(options);
-                            observable() && $(el).datepicker(
-                                'setDate',
-                                moment(
-                                    observable(),
-                                    utils.convertToMomentFormat(
-                                        options.dateFormat + (options.showsTime ? ' ' + options.timeFormat : '')
-                                    )
-                                ).toDate()
-                            );
 
+                            if (observable()) {
+                                $(el).datepicker(
+                                    'setDate',
+                                    moment(
+                                        observable(),
+                                        utils.convertToMomentFormat(
+                                            options.dateFormat + (options.showsTime ? ' ' + options.timeFormat : '')
+                                        )
+                                    ).toDate()
+                                );
+                            }
                             $(el).blur();
 
                             ko.utils.registerEventHandler(el, 'change', function () {
@@ -157,15 +159,17 @@ define(
                                 observable = config;
                             }
 
-                             $(el).datepicker(
-                                 'setDate',
-                                 moment(
-                                     observable(),
-                                     utils.convertToMomentFormat(
-                                         options.dateFormat + (options.showsTime ? ' ' + options.timeFormat : '')
-                                     )
-                                 ).toDate()
-                             );
+                            if (observable()) {
+                                $(el).datepicker(
+                                    'setDate',
+                                    moment(
+                                        observable(),
+                                        utils.convertToMomentFormat(
+                                            options.dateFormat + (options.showsTime ? ' ' + options.timeFormat : '')
+                                        )
+                                    ).toDate()
+                                );
+                            }
                         }
                     }
 
@@ -324,8 +328,8 @@ define(
                         case 'date':
                             var array = value.split(":");
                             var dateFormat = this.outputDateFormat;
-                            var shiftedValue = moment(array[0], dateFormat);
-                            var shiftedSecondValue = moment(array[1], dateFormat);
+                            var shiftedValue = array[0] ? moment(array[0], dateFormat) : '';
+                            var shiftedSecondValue = array[1] ? moment(array[1], dateFormat) : '';
                             $.async({
                                 component: this,
                                 selector: 'input'

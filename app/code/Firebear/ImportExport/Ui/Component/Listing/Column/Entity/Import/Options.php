@@ -24,14 +24,6 @@ class Options implements OptionSourceInterface
 
     const CATALOG_CATEGORY = 'catalog_category';
 
-    const ADVANCED_PRICING = 'advanced_pricing';
-
-    const CART_PRICE_RULE = 'cart_price_rule';
-
-    const CMS_PAGE = 'cms_page';
-
-    const CMS_BLOCK = 'cms_block';
-
     /**
      * @var array
      */
@@ -145,19 +137,13 @@ class Options implements OptionSourceInterface
             ])) {
                 $newOptions[$key] = $this->getAttributeCategories($withoutGroup);
             } else {
-                if (in_array($key, [
-                    self::CART_PRICE_RULE
-                ])) {
-                    $newOptions[$key] = [];
-                } else {
-                    try {
-                        $object = $this->entityFactory->create($items['model']);
-                        $newOptions[$key] = $this->getAllFields($object);
-                    } catch (\Exception $e) {
-                        throw new \Magento\Framework\Exception\LocalizedException(
-                            __('Please enter a correct entity model.')
-                        );
-                    }
+                try {
+                    $object = $this->entityFactory->create($items['model']);
+                    $newOptions[$key] = $this->getAllFields($object);
+                } catch (\Exception $e) {
+                    throw new \Magento\Framework\Exception\LocalizedException(
+                        __('Please enter a correct entity model.')
+                    );
                 }
             }
         }

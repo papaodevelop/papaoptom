@@ -6,7 +6,11 @@
 
 namespace Firebear\ImportExport\Ui\Component\Listing\Column\Entity\Types;
 
+use Firebear\ImportExport\Model\Export\Dependencies\Config;
+use Firebear\ImportExport\Model\ExportFactory;
 use Magento\Framework\Data\OptionSourceInterface;
+use Magento\ImportExport\Model\Export\ConfigInterface;
+use Magento\ImportExport\Model\Source\Export\Entity;
 
 /**
  * Class Options
@@ -14,32 +18,32 @@ use Magento\Framework\Data\OptionSourceInterface;
 class Options implements OptionSourceInterface
 {
     /**
-     * @var \Magento\ImportExport\Model\Export\ConfigInterface
+     * @var ConfigInterface
      */
     protected $exportConfig;
 
     /**
-     * @var \Firebear\ImportExport\Model\Export\Dependencies\Config
+     * @var Config
      */
     protected $diExport;
-
-    /**
-     * Options constructor.
-     * @param \Firebear\ImportExport\Model\ExportFactory $export
-     * @param \Magento\ImportExport\Model\Source\Export\Entity $entity
-     */
-    public function __construct(
-        \Magento\ImportExport\Model\Export\ConfigInterface $exportConfig,
-        \Firebear\ImportExport\Model\Export\Dependencies\Config $configExDi
-    ) {
-        $this->exportConfig = $exportConfig;
-        $this->diExport = $configExDi;
-    }
 
     /**
      * @var array
      */
     protected $options;
+
+    /**
+     * Options constructor.
+     * @param ConfigInterface $exportConfig
+     * @param Config $configExDi
+     */
+    public function __construct(
+        ConfigInterface $exportConfig,
+        Config $configExDi
+    ) {
+        $this->exportConfig = $exportConfig;
+        $this->diExport = $configExDi;
+    }
 
     /**
      * Get options
@@ -48,24 +52,25 @@ class Options implements OptionSourceInterface
      */
     public function toOptionArray()
     {
-        $options = [];
-        foreach ($this->exportConfig->getEntities() as $entityName => $entityConfig) {
-            $options[$entityName] = [['value' => $entityName, 'label' => __($entityConfig['label'])]];
-        }
-        $data = $this->diExport->get();
-        foreach ($data as $typeName => $type) {
-            $childs = [];
-            if (isset($type['fields'])) {
-                foreach ($type['fields'] as $name => $field) {
-                    $childs[] = ['label' => $field['label'], 'value' => $name, 'dep' => $typeName];
-                }
-            } else {
-                $childs[] = ['label' => $type['label'], 'value' => $typeName];
+        if (!$this->options) {
+            $options = [];
+            foreach ($this->exportConfig->getEntities() as $entityName => $entityConfig) {
+                $options[$entityName] = [['value' => $entityName, 'label' => __($entityConfig['label'])]];
             }
-            $options[$typeName] = $childs;
+            $data = $this->diExport->get();
+            foreach ($data as $typeName => $type) {
+                $childs = [];
+                if (isset($type['fields'])) {
+                    foreach ($type['fields'] as $name => $field) {
+                        $childs[] = ['label' => $field['label'], 'value' => $name, 'dep' => $typeName];
+                    }
+                } else {
+                    $childs[] = ['label' => $type['label'], 'value' => $typeName];
+                }
+                $options[$typeName] = $childs;
+            }
+            $this->options = $options;
         }
-        $this->options = $options;
-
         return $this->options;
     }
 }

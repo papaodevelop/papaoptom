@@ -228,7 +228,9 @@ class AdvancedPricing extends MagentoAdvancedPricing implements EntityInterface
                 break;
             }
             $exportData = $this->getExportData();
-
+            if ($page == 1) {
+                $writer->setHeaderCols($this->_getHeaderColumns());
+            }
             foreach ($exportData as $dataRow) {
                 $writer->writeRow($dataRow);
                 $counts++;
@@ -248,6 +250,18 @@ class AdvancedPricing extends MagentoAdvancedPricing implements EntityInterface
     public function getFieldsForExport()
     {
         return array_keys($this->templateExportData);
+    }
+
+    /**
+     * Get header columns
+     *
+     * @return string[]
+     */
+    public function _getHeaderColumns()
+    {
+        $headers = $this->getFieldsForExport();
+
+        return $this->changeHeaders($headers);
     }
 
     /**

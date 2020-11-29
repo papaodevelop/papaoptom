@@ -19,6 +19,12 @@ class Item extends AbstractAdapter
     const ENTITY_TYPE_CODE = 'order';
 
     /**
+     * Prefix of Fields
+     *
+     */
+    const PREFIX = 'item';
+
+    /**
      * Entity Id Column Name
      *
      */
@@ -140,8 +146,8 @@ class Item extends AbstractAdapter
      */
     public function prepareRowData(array $rowData)
     {
-        parent::prepareRowData($rowData);
-        $rowData = $this->_extractField($rowData, 'item');
+        $this->prepareCurrentOrderId($rowData);
+        $rowData = $this->_extractField($rowData, static::PREFIX);
         return (count($rowData) && !$this->isEmptyRow($rowData))
             ? $rowData
             : false;
@@ -213,7 +219,7 @@ class Item extends AbstractAdapter
             foreach ($this->_baseFields as $field) {
                 if (isset($rowData[$field]) && !isset($rowData['base_' . $field])) {
                     $rowData['base_' . $field] = $rowData[$field];
-                } else {
+                } elseif (!isset($rowData[$field])) {
                     // set default values
                     $rowData[$field] = $rowData['base_' . $field] = 0;
                 }
@@ -222,7 +228,7 @@ class Item extends AbstractAdapter
 
         if (empty($rowData['tax_amount'])) {
             foreach ($this->_taxFields as $field) {
-                if (empty($rowData[$field])) {
+                if (isset($rowData[$field])) {
                     $rowData[$field . '_incl_tax'] = $rowData[$field];
                 }
             }
@@ -240,7 +246,6 @@ class Item extends AbstractAdapter
         ];
         /* prepare data */
         $entityRow = $this->_prepareEntityRow($entityRow, $rowData);
-
         if ($newEntity) {
             $toCreate[] = $entityRow;
         } else {

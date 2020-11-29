@@ -150,12 +150,8 @@ class CategoryProcessor extends \Magento\CatalogImportExport\Model\Import\Produc
                 if ($collectionId->getSize()) {
                     $secondCategory = $collectionId->getFirstItem()->getId();
                 }
-            } else {
-                $collection = $this->categoryColFactory->create()->addFieldToFilter('path', $cData);
-                if ($collection->getSize()) {
-                    $secondCategory = $cData;
-                }
             }
+
             if (empty($secondCategory)) {
                 if ($colCategoryNotEmpty) {
                     $secondCategory = $this->upsertCategory($cData);

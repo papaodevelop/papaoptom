@@ -6,9 +6,13 @@
 
 namespace Firebear\ImportExport\Model\Export\Adapter;
 
-use Magento\Framework\Filesystem;
-use Magento\ImportExport\Model\Export\Adapter\AbstractAdapter;
+use Exception;
 use Firebear\ImportExport\Model\Output\Xslt;
+use Magento\Framework\App\Filesystem\DirectoryList;
+use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Filesystem;
+use Psr\Log\LoggerInterface;
+use XMLWriter;
 
 /**
  * Xml Export Adapter
@@ -18,14 +22,14 @@ class Xml extends AbstractAdapter
     /**
      * XML Writer
      *
-     * @var \XMLWriter
+     * @var XMLWriter
      */
     protected $writer;
 
     /**
      * Xslt Converter
      *
-     * @var \Firebear\ImportExport\Model\Output\Xslt
+     * @var Xslt
      */
     protected $xslt;
 
@@ -37,54 +41,32 @@ class Xml extends AbstractAdapter
     protected $xsl;
 
     /**
-     * Adapter Data
-     *
-     * @var []
-     */
-    protected $_data;
-
-    /**
-     * Initialize Adapter
-     *
+     * Xml constructor.
      * @param Filesystem $filesystem
-     * @param \XMLWriter $writer
+     * @param LoggerInterface $logger
+     * @param XMLWriter $writer
      * @param Xslt $xslt
      * @param null $destination
-     * @param [] $data
+     * @param string $destinationDirectoryCode
+     * @param array $data
+     * @throws LocalizedException
      */
     public function __construct(
         Filesystem $filesystem,
-        \XMLWriter $writer,
+        LoggerInterface $logger,
+        XMLWriter $writer,
         Xslt $xslt,
         $destination = null,
+        $destinationDirectoryCode = DirectoryList::VAR_DIR,
         array $data = []
     ) {
         $this->writer = $writer;
         $this->xslt = $xslt;
-        $this->_data = $data;
 
         if (!empty($data['xml_switch']) && isset($data['xslt'])) {
             $this->xsl = $data['xslt'];
         }
-
-        parent::__construct(
-            $filesystem,
-            $destination
-        );
-    }
-
-    /**
-     * @return $this
-     */
-    protected function _init()
-    {
-        $this->writer->openURI('php://output');
-        $this->writer->openMemory();
-        $this->writer->startDocument("1.0", "UTF-8");
-        $this->writer->setIndent(1);
-        $this->writer->startElement("Items");
-
-        return $this;
+        parent::__construct($filesystem, $logger, $destination, $destinationDirectoryCode, $data);
     }
 
     /**
@@ -125,8 +107,8 @@ class Xml extends AbstractAdapter
      * Write row data to source file.
      *
      * @param array $rowData
-     * @throws \Exception
      * @return $this
+     * @throws Exception
      */
     public function writeRow(array $rowData)
     {
@@ -165,5 +147,19 @@ class Xml extends AbstractAdapter
                 $this->writer->endElement();
             }
         }
+    }
+
+    /**
+     * @return $this
+     */
+    protected function _init()
+    {
+        $this->writer->openURI('php://output');
+        $this->writer->openMemory();
+        $this->writer->startDocument("1.0", "UTF-8");
+        $this->writer->setIndent(1);
+        $this->writer->startElement("Items");
+
+        return $this;
     }
 }

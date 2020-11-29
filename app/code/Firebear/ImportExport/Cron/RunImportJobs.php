@@ -7,6 +7,7 @@
 namespace Firebear\ImportExport\Cron;
 
 use Firebear\ImportExport\Model\Job\Processor;
+use Firebear\ImportExport\Model\Email\Sender;
 
 /**
  * Sales entity grids indexing observer.
@@ -32,16 +33,26 @@ class RunImportJobs
     protected $debugMode;
 
     /**
+     * Email sender
+     *
+     * @var Sender
+     */
+    protected $sender;
+
+    /**
      * RunImportJobs constructor.
      *
      * @param Processor $importProcessor
+     * @param Sender $sender
      */
     public function __construct(
         Processor $importProcessor,
-        \Firebear\ImportExport\Helper\Data $helper
+        \Firebear\ImportExport\Helper\Data $helper,
+        Sender $sender
     ) {
         $this->helper = $helper;
         $this->processor = $importProcessor;
+        $this->sender = $sender;
     }
 
     /**
@@ -58,6 +69,7 @@ class RunImportJobs
         if (isset($matches[1]) && (int)$matches[1] > 0) {
             $noProblems = 0;
             $jobId = (int)$matches[1];
+            $result = false;
             $file = $this->helper->beforeRun($jobId);
             $history = $this->helper->createHistory($jobId, $file, 'console');
             $this->processor->debugMode = $this->debugMode = $this->helper->getDebugMode();
@@ -66,6 +78,7 @@ class RunImportJobs
             $this->processor->processScope($jobId, $file);
             $counter = $this->helper->countData($file, $jobId);
             $error = 0;
+
             for ($i = 0; $i < $counter; $i++) {
                 list($count, $result) = $this->helper->processImport($file, $jobId, $i, $error, 0);
                 $error += $count;
@@ -74,6 +87,7 @@ class RunImportJobs
                     break;
                 }
             }
+
             if (!$noProblems && $this->processor->reindex) {
                 $this->processor->processReindex($file, $jobId);
             }
@@ -81,6 +95,12 @@ class RunImportJobs
             $this->processor->getImportModel()->getErrorAggregator()->clear();
             $this->processor->getImportModel()->setNullEntityAdapter();
             $this->helper->saveFinishHistory($history);
+
+            $this->sender->sendEmail(
+                $this->processor->getJob(),
+                $file,
+                (int)$result
+            );
             return true;
         }
 

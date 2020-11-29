@@ -38,6 +38,11 @@ class Address extends MagentoAddress
     protected $_dataSourceModel;
 
     /**
+     * @var array
+     */
+    protected $comparableList = [];
+
+    /**
      * @return MagentoAddress|void
      */
     protected function _initAttributes()
@@ -276,6 +281,7 @@ class Address extends MagentoAddress
         if (isset($this->_parameters['job_id'])) {
             $jobId = $this->_parameters['job_id'];
         }
+        $this->_initCustomerAddressEntity();
         while ($source->valid() || count($bunchRows) || isset($entityGroup)) {
             if ($startNewBunch || !$source->valid()) {
                 /* If the end approached add last validated entity group to the bunch */
@@ -313,6 +319,7 @@ class Address extends MagentoAddress
                             );
                         }
                     }
+                    $this->validateCustomerAddressEntity($rowData, $source->key());
                 } catch (\InvalidArgumentException $e) {
                     $valid = false;
                     $this->addRowError($e->getMessage(), $this->_processedRowsCount);
@@ -353,5 +360,61 @@ class Address extends MagentoAddress
             }
         }
         return $this;
+    }
+
+    /**
+     * Init customer address entity
+     */
+    protected function _initCustomerAddressEntity()
+    {
+        try {
+            $table = $this->_connection->getTableName('customer_address_entity');
+            $select = $this->_connection->select()->from($table, ['entity_id', 'parent_id']);
+            $result = $this->_connection->fetchAll($select);
+            if ($result) {
+                foreach ($result as $res) {
+                    $this->comparableList[$res['entity_id']] = $res['parent_id'];
+                }
+            }
+        } catch (Exception $e) {
+            $this->addLogWriteln($e->getMessage(), $this->output, 'error');
+        }
+    }
+
+    /**
+     * @param $entityIdDump
+     * @param $customerId
+     * @return bool
+     */
+    protected function isEntityAddressIdAtAnotherCustomer($entityIdDump, $customerId)
+    {
+        $result = false;
+        if (isset($this->comparableList[$entityIdDump])
+            && $this->comparableList[$entityIdDump] != $customerId
+        ) {
+            $result = true;
+        }
+        return $result;
+    }
+
+    /**
+     * @param $rowData
+     * @param $rowNum
+     */
+    protected function validateCustomerAddressEntity($rowData, $rowNum)
+    {
+        $email = $rowData[self::COLUMN_EMAIL] ?? '';
+        $website = $rowData[self::COLUMN_WEBSITE] ?? '';
+        $entityId = $rowData['_entity_id'] ?? '';
+        if (!empty($email) && !empty($website)) {
+            $customerId = $this->_getCustomerId($email, $website);
+            if ($customerId
+                && $this->isEntityAddressIdAtAnotherCustomer($entityId, $customerId)
+            ) {
+                $message = 'this _entity_id = %1 belongs to another customer';
+                $this->addLogWriteln(__($message, $entityId, $this->output, 'error'));
+                $this->addRowError(__($message, $entityId), $rowNum);
+            }
+        }
     }
 }

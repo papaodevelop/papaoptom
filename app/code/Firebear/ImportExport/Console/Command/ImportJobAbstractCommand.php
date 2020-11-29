@@ -7,6 +7,7 @@
 namespace Firebear\ImportExport\Console\Command;
 
 use Firebear\ImportExport\Api\JobRepositoryInterface;
+use Firebear\ImportExport\Model\Email\Sender;
 use Firebear\ImportExport\Model\JobFactory;
 use Firebear\ImportExport\Model\Job\Processor;
 use Symfony\Component\Console\Command\Command;
@@ -55,6 +56,13 @@ class ImportJobAbstractCommand extends Command
     protected $loggerRun;
 
     /**
+     * Email sender
+     *
+     * @var Sender
+     */
+    protected $sender;
+
+    /**
      * ImportJobAbstractCommand constructor.
      *
      * @param JobFactory $factory
@@ -63,6 +71,7 @@ class ImportJobAbstractCommand extends Command
      * @param Processor $importProcessor
      * @param \Firebear\ImportExport\Helper\Data $helper
      * @param \Magento\Framework\App\State $state
+     * @param Sender $sender
      */
     public function __construct(
         JobFactory $factory,
@@ -70,7 +79,8 @@ class ImportJobAbstractCommand extends Command
         \Firebear\ImportExport\Logger\Logger $logger,
         Processor $importProcessor,
         \Firebear\ImportExport\Helper\Data $helper,
-        \Magento\Framework\App\State $state
+        \Magento\Framework\App\State $state,
+        Sender $sender
     ) {
         $this->factory = $factory;
         $this->repository = $repository;
@@ -78,6 +88,7 @@ class ImportJobAbstractCommand extends Command
         $this->state = $state;
         $this->logger = $logger;
         $this->helper = $helper;
+        $this->sender = $sender;
         parent::__construct();
     }
 

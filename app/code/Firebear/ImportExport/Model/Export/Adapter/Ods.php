@@ -3,25 +3,31 @@
  * @copyright: Copyright © 2017 Firebear Studio. All rights reserved.
  * @author   : Firebear Studio <fbeardev@gmail.com>
  */
+
 namespace Firebear\ImportExport\Model\Export\Adapter;
 
-use Magento\ImportExport\Model\Export\Adapter\AbstractAdapter;
-use Magento\Framework\Filesystem;
-use Magento\Framework\Exception\LocalizedException;
+use Box\Spout\Common\Exception\IOException;
+use Box\Spout\Common\Exception\UnsupportedTypeException;
+use Box\Spout\Common\Type;
 use Box\Spout\Writer\Common\Helper\CellHelper;
 use Box\Spout\Writer\WriterFactory;
-use Box\Spout\Common\Type;
 use Firebear\ImportExport\Model\Export\Adapter\Spout\CellHelper as FirebearCellHelper;
+use Magento\Framework\App\Filesystem\DirectoryList;
+use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Exception\ValidatorException;
+use Magento\Framework\Filesystem;
+use Psr\Log\LoggerInterface;
 
 /**
  * Ods Export Adapter
  */
 class Ods extends AbstractAdapter
 {
+
     /**
      * Spreadsheet Writer
      *
-     * @var \
+     * @var
      */
     protected $writer;
 
@@ -33,52 +39,29 @@ class Ods extends AbstractAdapter
     protected $filePath;
 
     /**
-     * Adapter Data
-     *
-     * @var []
-     */
-    protected $_data;
-
-    /**
-     * Initialize Adapter
+     * Ods constructor.
      *
      * @param Filesystem $filesystem
+     * @param LoggerInterface $logger
      * @param null $destination
+     * @param string $destinationDirectoryCode
      * @param array $data
-     *
      * @throws LocalizedException
      */
     public function __construct(
         Filesystem $filesystem,
+        LoggerInterface $logger,
         $destination = null,
+        $destinationDirectoryCode = DirectoryList::VAR_DIR,
         array $data = []
     ) {
-        $this->_data = $data;
-        if (empty($this->_data['export_source']['file_path'])) {
+        if (empty($data['export_source']['file_path'])) {
             throw new LocalizedException(__('Export File Path is Empty.'));
         }
 
         class_alias(FirebearCellHelper::class, CellHelper::class);
 
-        parent::__construct(
-            $filesystem,
-            $destination
-        );
-    }
-
-    /**
-     * Method called as last step of object instance creation
-     *
-     * @return AbstractAdapter
-     */
-    protected function _init()
-    {
-        $this->writer = WriterFactory::create(Type::ODS);
-        $file = $this->_directoryHandle->getAbsolutePath(
-            $this->_destination
-        );
-        $this->writer->openToFile($file);
-        return $this;
+        parent::__construct($filesystem, $logger, $destination, $destinationDirectoryCode, $data);
     }
 
     /**
@@ -86,6 +69,7 @@ class Ods extends AbstractAdapter
      *
      * @param array $rowData
      * @return AbstractAdapter
+     * @throws LocalizedException
      */
     public function writeRow(array $rowData)
     {
@@ -120,6 +104,7 @@ class Ods extends AbstractAdapter
      *
      * @param array $headerColumns
      * @return AbstractAdapter
+     * @throws LocalizedException
      */
     public function setHeaderCols(array $headerColumns)
     {
@@ -164,5 +149,23 @@ class Ods extends AbstractAdapter
     public function getFileExtension()
     {
         return 'ods';
+    }
+
+    /**
+     * Method called as last step of object instance creation
+     *
+     * @return AbstractAdapter
+     * @throws IOException
+     * @throws UnsupportedTypeException
+     * @throws ValidatorException
+     */
+    protected function _init()
+    {
+        $this->writer = WriterFactory::create(Type::ODS);
+        $file = $this->_directoryHandle->getAbsolutePath(
+            $this->_destination
+        );
+        $this->writer->openToFile($file);
+        return $this;
     }
 }

@@ -1,0 +1,34 @@
+<!--
+/**
+ * Copyright © 2015 Magento. All rights reserved.
+ * See COPYING.txt for license details.
+ */
+-->
+<theme xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Config/etc/theme.xsd">
+    <title>Smartwave Porto Child</title>
+	<parent>Smartwave/porto</parent>
+    <media>
+        <preview_image>media/preview.png</preview_image>
+    </media>
+    <catalogsearch_result_index>
+        <reference name="search_result_list">
+            <action method="setDefaultDirection"><param>asc</param></action>
+            <action method="setSortBy"><param>special_price</param></action>
+        </reference>
+    </catalogsearch_result_index>
+    <catalogsearch_advanced_result>
+        <reference name="search_result_list">
+            <action method="setDefaultDirection"><param>asc</param></action>
+            <action method="setSortBy"><param>special_price</param></action>
+        </reference>
+    </catalogsearch_advanced_result>
+    <referenceBlock name="product_list">
+        <action method="setSortBy">
+            <argument name="dir" xsi:type="string">special_price</argument>
+        </action>
+        <action method="setDefaultDirection">
+            <argument name="dir" xsi:type="string">asc</argument>
+        </action>
+    </referenceBlock>
+
+</theme>

@@ -6,6 +6,7 @@
 
 namespace Firebear\ImportExport\Model\Migration\PreJob;
 
+use Firebear\ImportExport\Model\Migration\Config;
 use Firebear\ImportExport\Model\Migration\DbConnection;
 use Firebear\ImportExport\Model\Migration\PreJobInterface;
 
@@ -25,14 +26,22 @@ class Truncate implements PreJobInterface
     protected $table;
 
     /**
+     * @var Config
+     */
+    protected $config;
+
+    /**
      * @param DbConnection $dbConnection
+     * @param Config $config
      * @param string $table
      */
     public function __construct(
         DbConnection $dbConnection,
+        Config $config,
         string $table
     ) {
         $this->dbConnection = $dbConnection;
+        $this->config = $config;
         $this->table = $table;
     }
 
@@ -42,7 +51,7 @@ class Truncate implements PreJobInterface
     public function job()
     {
         $this->dbConnection->getDestinationChannel()->query('SET FOREIGN_KEY_CHECKS = 0;');
-        $this->dbConnection->getDestinationChannel()->truncateTable($this->table);
+        $this->dbConnection->getDestinationChannel()->truncateTable($this->config->getM2Prefix() . $this->table);
         $this->dbConnection->getDestinationChannel()->query('SET FOREIGN_KEY_CHECKS = 1;');
     }
 }

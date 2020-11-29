@@ -6,10 +6,20 @@
 
 namespace Firebear\ImportExport\Model\Export\Adapter;
 
-use Magento\Framework\Filesystem;
-use Magento\ImportExport\Model\Export\Adapter\AbstractAdapter;
+use Exception;
+use Google_Client;
+use Google_Exception;
+use Google_Service_Exception;
+use Google_Service_Sheets;
+use Google_Service_Sheets_BatchUpdateSpreadsheetRequest;
+use Google_Service_Sheets_Request;
+use Google_Service_Sheets_Sheet;
+use Google_Service_Sheets_ValueRange;
 use Magento\Framework\App\CacheInterface;
+use Magento\Framework\Filesystem;
 use Magento\Framework\Filesystem\DirectoryList;
+use Psr\Log\LoggerInterface;
+use RuntimeException;
 
 /**
  * GoogleSheet Adapter
@@ -24,13 +34,13 @@ class GoogleSheet extends AbstractAdapter
     /**
      * Api constants
      */
-    protected const DIMENSION_ROWS = 'ROWS';
-    protected const DIMENSION_COLS = 'COLUMNS';
+    const DIMENSION_ROWS = 'ROWS';
+    const DIMENSION_COLS = 'COLUMNS';
 
     /**
      * Cache storage
      *
-     * @var \Magento\Framework\App\CacheInterface
+     * @var CacheInterface
      */
     protected $_cache;
 
@@ -44,7 +54,7 @@ class GoogleSheet extends AbstractAdapter
     /**
      * Sheets Api
      *
-     * @var \Google_Service_Sheets
+     * @var Google_Service_Sheets
      */
     protected $_sheetsService;
 
@@ -128,19 +138,23 @@ class GoogleSheet extends AbstractAdapter
     protected $_sheetTitle;
 
     /**
-     * GoogleSheet constructor
-     *
+     * GoogleSheet constructor.
+     * @param Filesystem $filesystem
+     * @param LoggerInterface $logger
      * @param DirectoryList $directoryList
      * @param CacheInterface $cache
+     * @param null $destination
+     * @param string $destinationDirectoryCode
      * @param array $data
-     * @inheritdoc
-     * @throws \RuntimeException
+     * @throws \Magento\Framework\Exception\LocalizedException
      */
     public function __construct(
         Filesystem $filesystem,
+        LoggerInterface $logger,
         DirectoryList $directoryList,
         CacheInterface $cache,
         $destination = null,
+        $destinationDirectoryCode = \Magento\Framework\App\Filesystem\DirectoryList::VAR_DIR,
         array $data = []
     ) {
         $this->_directoryList = $directoryList;
@@ -151,10 +165,7 @@ class GoogleSheet extends AbstractAdapter
         $this->_spreadsheetId = $data['export_source']['spreadsheet_id'];
         $this->_sheetId = $data['export_source']['sheet_id'];
 
-        parent::__construct(
-            $filesystem,
-            $destination
-        );
+        parent::__construct($filesystem, $logger, $destination, $destinationDirectoryCode, $data);
     }
 
     /**
@@ -162,14 +173,14 @@ class GoogleSheet extends AbstractAdapter
      *
      * @param string $filePath
      * @return string
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
     protected function getAuthConfig($filePath)
     {
         $rootPath = $this->_directoryList->getRoot();
         $absolutePath = $rootPath . DIRECTORY_SEPARATOR . $filePath;
         if (!file_exists($absolutePath)) {
-            throw new \RuntimeException('Auth file ' . $filePath . ' isn\'t readable or the file has been removed');
+            throw new RuntimeException('Auth file ' . $filePath . ' isn\'t readable or the file has been removed');
         }
 
         return file_get_contents($absolutePath);
@@ -179,13 +190,13 @@ class GoogleSheet extends AbstractAdapter
      * Get access token
      *
      * @return string
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
     protected function getAccessToken()
     {
         $authConfig = json_decode($this->_authConfig, true);
         if (empty($authConfig['private_key_id'])) {
-            throw new \RuntimeException('Auth file doesn\'t contain all necessary settings to get Auth Token');
+            throw new RuntimeException('Auth file doesn\'t contain all necessary settings to get Auth Token');
         }
 
         return $authConfig['private_key_id'];
@@ -194,7 +205,7 @@ class GoogleSheet extends AbstractAdapter
     /**
      * Collect items into batches and only then run single api request
      *
-     * @throws \Google_Exception
+     * @throws Google_Exception
      * @inheritdoc
      */
     public function writeRow(array $rowData)
@@ -208,8 +219,8 @@ class GoogleSheet extends AbstractAdapter
         if (count($this->_exportQueue) && count($this->_exportQueue) >= $this->getBatchSize()) {
             try {
                 $this->exportQueue();
-            } catch (\Exception $exception) {
-                if ($exception instanceof \Google_Service_Exception) {
+            } catch (Exception $exception) {
+                if ($exception instanceof Google_Service_Exception) {
                     $reason = $exception->getErrors()[0]['reason'];
                     if ($reason == 'rateLimitExceeded') {
                         // Try to do short delay before run api requests again
@@ -227,7 +238,7 @@ class GoogleSheet extends AbstractAdapter
     /**
      * Export rows in queue to the specified sheet
      *
-     * @throws \Google_Exception
+     * @throws Google_Exception
      */
     protected function exportQueue()
     {
@@ -247,11 +258,11 @@ class GoogleSheet extends AbstractAdapter
     /**
      * Fetch target table information
      *
-     * @throws \Google_Exception
+     * @throws Google_Exception
      */
     protected function fetchSheetInformation()
     {
-        /** @var \Google_Service_Sheets_Sheet[] $sheets */
+        /** @var Google_Service_Sheets_Sheet[] $sheets */
         $sheets = $this->getApi()->spreadsheets->get($this->_spreadsheetId);
         $sheet = $this->getSheetById($this->_sheetId, $sheets);
 
@@ -266,9 +277,9 @@ class GoogleSheet extends AbstractAdapter
      * Get target sheet by sheetId
      *
      * @param string $sheetId
-     * @param \Google_Service_Sheets_Sheet[] $sheets
-     * @return \Google_Service_Sheets_Sheet
-     * @throws \RuntimeException
+     * @param Google_Service_Sheets_Sheet[] $sheets
+     * @return Google_Service_Sheets_Sheet
+     * @throws RuntimeException
      */
     protected function getSheetById($sheetId, $sheets)
     {
@@ -281,7 +292,7 @@ class GoogleSheet extends AbstractAdapter
         }
 
         if ($neededSheet === null) {
-            throw new \RuntimeException('Failed to find sheet #' . $sheetId);
+            throw new RuntimeException('Failed to find sheet #' . $sheetId);
         }
 
         return $neededSheet;
@@ -291,12 +302,12 @@ class GoogleSheet extends AbstractAdapter
      * Reset table to empty document state with 1 ros and column.
      * Google gives only 5000000 cells(~40000 products) per all tabs in document
      *
-     * @throws \Google_Exception
+     * @throws Google_Exception
      */
     protected function clearTable()
     {
         $requests = [
-            new \Google_Service_Sheets_Request([
+            new Google_Service_Sheets_Request([
                 'deleteDimension' => [
                     'range' => [
                         'sheetId' => $this->_sheetId,
@@ -306,7 +317,7 @@ class GoogleSheet extends AbstractAdapter
                     ]
                 ]
             ]),
-            new \Google_Service_Sheets_Request([
+            new Google_Service_Sheets_Request([
                 'deleteDimension' => [
                     'range' => [
                         'sheetId' => $this->_sheetId,
@@ -320,7 +331,7 @@ class GoogleSheet extends AbstractAdapter
 
         $this->getApi()->spreadsheets->batchUpdate(
             $this->_spreadsheetId,
-            new \Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
+            new Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
                 'requests' => $requests
             ])
         );
@@ -335,7 +346,7 @@ class GoogleSheet extends AbstractAdapter
      * In case if table has not enough cols we need to add them
      *
      * @param int $neededColumnsCount
-     * @throws \Google_Exception
+     * @throws Google_Exception
      */
     protected function prepareTableColumns($neededColumnsCount)
     {
@@ -344,7 +355,7 @@ class GoogleSheet extends AbstractAdapter
         }
 
         $requests = [
-            new \Google_Service_Sheets_Request([
+            new Google_Service_Sheets_Request([
                 'insertDimension' => [
                     'range' => [
                         'sheetId' => $this->_sheetId,
@@ -358,7 +369,7 @@ class GoogleSheet extends AbstractAdapter
 
         $this->getApi()->spreadsheets->batchUpdate(
             $this->_spreadsheetId,
-            new \Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
+            new Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
                 'requests' => $requests
             ])
         );
@@ -371,7 +382,7 @@ class GoogleSheet extends AbstractAdapter
      * In case if table has not enough rows we need to add them
      *
      * @param int $rowsToAdd
-     * @throws \Google_Exception
+     * @throws Google_Exception
      */
     protected function prepareTableRows($rowsToAdd)
     {
@@ -381,7 +392,7 @@ class GoogleSheet extends AbstractAdapter
 
         $startIndex = $this->_linesCounter - 1;
         $requests = [
-            new \Google_Service_Sheets_Request([
+            new Google_Service_Sheets_Request([
                 'insertDimension' => [
                     'range' => [
                         'sheetId' => $this->_sheetId,
@@ -395,7 +406,7 @@ class GoogleSheet extends AbstractAdapter
 
         $this->getApi()->spreadsheets->batchUpdate(
             $this->_spreadsheetId,
-            new \Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
+            new Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
                 'requests' => $requests
             ])
         );
@@ -407,12 +418,12 @@ class GoogleSheet extends AbstractAdapter
     /**
      * Insert rows to the table
      *
-     * @throws \Google_Exception
+     * @throws Google_Exception
      */
     protected function insertRows()
     {
         $options = ['valueInputOption' => 'RAW'];
-        $body = new \Google_Service_Sheets_ValueRange(['values' => $this->_exportQueue]);
+        $body = new Google_Service_Sheets_ValueRange(['values' => $this->_exportQueue]);
 
         $this->getApi()
             ->spreadsheets_values
@@ -422,19 +433,19 @@ class GoogleSheet extends AbstractAdapter
     /**
      * Get api client to work with sheet values
      *
-     * @return \Google_Service_Sheets
-     * @throws \Google_Exception
+     * @return Google_Service_Sheets
+     * @throws Google_Exception
      */
     protected function getApi()
     {
         if ($this->_sheetsService === null) {
-            $client = new \Google_Client();
+            $client = new Google_Client();
             $client->setApplicationName('');
-            $client->setScopes(\Google_Service_Sheets::SPREADSHEETS);
+            $client->setScopes(Google_Service_Sheets::SPREADSHEETS);
             $client->setAuthConfig(json_decode($this->_authConfig, true));
             $client->setAccessToken($this->_accessToken);
 
-            $this->_sheetsService = new \Google_Service_Sheets($client);
+            $this->_sheetsService = new Google_Service_Sheets($client);
         }
 
         return $this->_sheetsService;
@@ -488,7 +499,7 @@ class GoogleSheet extends AbstractAdapter
     {
         $numeric = $num % 26;
         $letter = chr(65 + $numeric);
-        $num2 = (int) $num / 26;
+        $num2 = (int)$num / 26;
 
         if ($num2 > 0) {
             return $this->getNameFromNumber($num2 - 1) . $letter;

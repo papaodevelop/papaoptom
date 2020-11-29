@@ -11,10 +11,12 @@
             <field name="status" type="select" model="\Firebear\ImportExport\Model\Export\Order\Fields\Status\Options"/>
             <field name="store_id" type="select" model="\Firebear\ImportExport\Model\Export\Order\Fields\StoreId\Options"/>
             <field name="store_currency_code" type="select" model="\Magento\Config\Model\Config\Source\Locale\Currency"/>
+            <field name="customer_group" type="select" model="\Firebear\ImportExport\Model\Source\Config\CustomerGroup"/>
         </item>
         <item name="sales_order_item" label="Items of Order" model="\Magento\Sales\Model\Order\Item" parent="sales_order" parent_field="order_id" main_field="item_id">
             <field name="product_type" type="select" model="\Magento\Catalog\Model\Product\Type"/>
         </item>
+        <item name="sales_order_product" label="Products of Order" model="\Magento\Catalog\Model\Product" parent="sales_order_item" parent_field="product_id" main_field="entity_id"/>
         <item name="sales_order_address" label="Addresses" model="\Magento\Sales\Model\Order\Address" parent="sales_order" parent_field="parent_id" main_field="entity_id">
             <field name="country_id" type="select" model="\Magento\Directory\Model\Config\Source\Country"/>
             <field name="address_type" type="select" model="\Firebear\ImportExport\Model\Export\Order\Address\Fields\AddressType\Options"/>
@@ -48,7 +50,7 @@
     <entity name="search_synonyms" label="Search Synonyms" model="Firebear\ImportExport\Model\Export\SearchSynonyms"/>
     <entity name="widget" label="Widget" model="Firebear\ImportExport\Model\Export\Widget"/>
     <entity name="review" label="Review" model="Firebear\ImportExport\Model\Export\Review"/>
-    <entity name="sales_rule" label="Sales Rule" model="Firebear\ImportExport\Model\Export\SalesRule"/>
+    <entity name="sales_rule" label="Cart Price Rules" model="Firebear\ImportExport\Model\Export\SalesRule"/>
     <entity name="catalog_rule" label="Catalog Rule" model="Firebear\ImportExport\Model\Export\CatalogRule"/>
     <entity name="newsletter_subscriber" label="Newsletter Subscriber" model="Firebear\ImportExport\Model\Export\NewsletterSubscriber"/>
 </config>

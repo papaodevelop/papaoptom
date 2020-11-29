@@ -120,7 +120,7 @@ class AfterCategoryDataObserver implements ObserverInterface
     private $categoryCache;
 
     /** @var array */
-    private $categories;
+    private $categories = [];
     private $categoriesCache;
     /**
      * @var StoreInterface[]
@@ -217,8 +217,12 @@ class AfterCategoryDataObserver implements ObserverInterface
 
         $storeId = $this->storeManager->getDefaultStoreView()->getId();
         $this->categories[$categoryId][$storeId] = $category;
-        if (isset($rowData[Category::COL_STORE])) {
-            $storeId = $this->storesList[$rowData[Category::COL_STORE]];
+        if (isset($rowData[Category::COL_STORE]) && !empty($rowData[Category::COL_STORE])) {
+            if (isset($this->storesList[$rowData[Category::COL_STORE]])) {
+                $storeId = $this->storesList[$rowData[Category::COL_STORE]];
+            } else {
+                error_log($rowData[Category::COL_STORE]. " could not find in storelist");
+            }
         }
 
         $this->categories[$categoryId][$storeId] = $category;

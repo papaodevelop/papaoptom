@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * @copyright: Copyright © 2017 Firebear Studio. All rights reserved.
  * @author   : Firebear Studio <fbeardev@gmail.com>
@@ -33,6 +34,10 @@ class Processor extends \Firebear\ImportExport\Model\AbstractProcessor
     const SOURCE = 'export_source';
 
     const SOURCE_DATA_SYSTEM = 'source_data_system';
+
+    const SOURCE_DATA_ENTITY = 'source_data_entity';
+
+    const SOURCE_DATA_MAP = 'source_data_map';
 
     const SOURCE_DATA_EXPORT = 'source_data_export';
 
@@ -311,26 +316,12 @@ class Processor extends \Firebear\ImportExport\Model\AbstractProcessor
         ];
 
         foreach ($mapData as $key => $items) {
-            if ($key == self::SOURCE_DATA_SYSTEM) {
+            if ($key === self::SOURCE_DATA_MAP) {
                 foreach ($items as $num => $values) {
-                    if ($num == self::VALUE) {
-                        foreach ($values as $k => $value) {
-                            if (!($mapData[self::SOURCE_DATA_EXPORT]['delete'][$k])) {
-                                $list[$k] = $value;
-                                $exportFilter[$num][$value] = "";
-                                $replace = $mapData[self::SOURCE_DATA_EXPORT][$num][$k];
-                                $replaces[$k] = $replace;
-                                $replacesValues[$k] = $mapData[self::SOURCE_DATA_REPLACES][$num][$k];
-                            }
-                        }
-                    }
-                    if ($num == self::ENTITY) {
-                        foreach ($values as $k => $value) {
-                            if (!($mapData[self::SOURCE_DATA_EXPORT]['delete'][$k])) {
-                                $deps[$k] = $value;
-                            }
-                        }
-                    }
+                    $deps[] = $values[self::SOURCE_DATA_ENTITY] ?? '';
+                    $list[] = $values[self::SOURCE_DATA_SYSTEM] ?? '';
+                    $replaces[] = $values[self::SOURCE_DATA_EXPORT] ?? '';
+                    $replacesValues[] = $values[self::SOURCE_DATA_REPLACES] ?? '';
                 }
             }
             if ($key == self::SOURCE_DATA_COUNT) {
@@ -439,7 +430,7 @@ class Processor extends \Firebear\ImportExport\Model\AbstractProcessor
         $model->setLogger($this->_logger);
         $model->setData($data);
         $entity = $data[self::SOURCE_ENTITY];
-        $this->addLogComment([__('Entity %1', $data['entity'])]);
+        $this->addLogComment([__('Entity %1', $this->prepareEntityName($data[self::ENTITY]))]);
         $source = $this->getSource($entity);
         $source->setData($data[self::EXPORT_SOURCE]);
         if ($data[self::SOURCE_ENTITY] === 'rest') {
@@ -460,6 +451,25 @@ class Processor extends \Firebear\ImportExport\Model\AbstractProcessor
             }
         }
         return $result;
+    }
+
+    /**
+     * @param $entity
+     * @return string
+     */
+    public function prepareEntityName($entity)
+    {
+        $map = [
+            'catalog_product' => 'products',
+            'catalog_category' => 'categories',
+            'customer_composite' => 'customers_and_addresses',
+            'customer' => 'customer_main',
+            'sales_rule' => 'cart_price_rule',
+            'search_query' => 'search_terms',
+            'content_hierarchy' => 'page_hierarchy'
+        ];
+
+        return isset($map[$entity]) ? $map[$entity] : $entity;
     }
 
     /**
@@ -487,7 +497,6 @@ class Processor extends \Firebear\ImportExport\Model\AbstractProcessor
      */
     public function addLogComment($debugData, OutputInterface $output = null, $type = null)
     {
-
         if (is_scalar($debugData)) {
             $this->addLogWriteln($debugData, null, $type);
         } elseif ($debugData instanceof \Magento\Framework\Phrase) {

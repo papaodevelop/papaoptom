@@ -71,11 +71,14 @@ define(
                 },
 
                 toggleByPlatform: function (selected) {
+                    var defaultSource = reg.get(this.parentName + '.import_source').getInitialValue();
+                    if (!defaultSource) {
+                        defaultSource = 'file';
+                    }
                     if (!selected || selected === undefined) {
-                        this.toggleVisibility('file');
+                        this.toggleVisibility(defaultSource);
                         return;
                     }
-
                     var entity = reg.get(this.ns + '.' + this.ns + '.settings.entity');
                     if (entity === undefined) {
                         this.toggleVisibility(selected);
@@ -83,7 +86,7 @@ define(
                     }
 
                     var value = entity.value() + '_' + selected;
-                    value = value in this.platformForm ? value : 'file';
+                    value = value in this.platformForm ? value : defaultSource;
                     this.toggleVisibility(value);
                 }
             }

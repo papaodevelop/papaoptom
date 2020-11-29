@@ -24,6 +24,16 @@ class Customer extends MagentoCustomer
     protected $_debugMode;
 
     /**
+     * @var array
+     */
+    protected $superUserList = [];
+
+    /**
+     * @var \Magento\Framework\App\ResourceConnection
+     */
+    protected $_resource;
+
+    /**
      * @param Context $context
      * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
      * @param \Magento\ImportExport\Model\ImportFactory $importFactory
@@ -75,6 +85,7 @@ class Customer extends MagentoCustomer
         $this->_logger = $context->getLogger();
         $this->_debugMode = $helper->getDebugMode();
         $this->_dataSourceModel = $context->getDataSourceModel();
+        $this->_resource = $context->getResource();
         $this->_helper = $helper;
     }
 
@@ -187,6 +198,7 @@ class Customer extends MagentoCustomer
         if (isset($this->_parameters['job_id'])) {
             $jobId = $this->_parameters['job_id'];
         }
+        $isSuperUserList = $this->initSuperUserListProcess();
         while ($source->valid() || count($bunchRows) || isset($entityGroup)) {
             if ($startNewBunch || !$source->valid()) {
                 /* If the end approached add last validated entity group to the bunch */
@@ -231,6 +243,9 @@ class Customer extends MagentoCustomer
                     continue;
                 }
                 $rowData = $this->customBunchesData($rowData);
+                if ($isSuperUserList) {
+                    $this->checkSuperUser($rowData, $source->key());
+                }
                 if (isset($rowData[$masterAttributeCode]) && trim($rowData[$masterAttributeCode])) {
                     /* Add entity group that passed validation to bunch */
                     if (isset($entityGroup)) {
@@ -261,6 +276,62 @@ class Customer extends MagentoCustomer
             }
         }
         return $this;
+    }
+
+    /**
+     * @return bool
+     */
+    protected function initSuperUserListProcess()
+    {
+        $result = false;
+        if (\Magento\ImportExport\Model\Import::BEHAVIOR_DELETE == $this->getBehavior()
+            && $this->_connection->isTableExists('company')
+        ) {
+            $tableName = $this->_resource->getTableName('company');
+            $select = $this->_connection->select();
+            $select->from(['c' => $tableName], 'c.super_user_id');
+            try {
+                $data = $this->_connection->fetchAll($select);
+            } catch (\Exception $e) {
+                $this->_logger->error($e->getMessage());
+            }
+            if (!empty($data)) {
+                foreach ($data as $row) {
+                    $this->superUserList[$row['super_user_id']] = 1;
+                }
+                $result = true;
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * @param $customerId
+     * @return int
+     */
+    protected function isSuperUser($customerId)
+    {
+        return isset($this->superUserList[$customerId]) ? 1 : 0;
+    }
+
+    /**
+     * @param $rowData
+     * @param $rowNum
+     */
+    protected function checkSuperUser($rowData, $rowNum)
+    {
+        if (isset($rowData[self::COLUMN_EMAIL]) && isset($rowData[self::COLUMN_WEBSITE])) {
+            $customerId = $this->_getCustomerId(
+                $rowData[self::COLUMN_EMAIL],
+                $rowData[self::COLUMN_WEBSITE]
+            );
+            if ($this->isSuperUser($customerId)) {
+                $email = $rowData[self::COLUMN_EMAIL];
+                $message = 'Cannot delete the company admin. Customer with email: %1 is company admin.';
+                $this->addLogWriteln(__($message, $email), $this->output, 'error');
+                $this->addRowError(__($message, $email), $rowNum);
+            }
+        }
     }
 
     protected function _validateRowForUpdate(array $rowData, $rowNum)

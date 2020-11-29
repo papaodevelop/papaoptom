@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * @copyright: Copyright © 2017 Firebear Studio. All rights reserved.
  * @author   : Firebear Studio <fbeardev@gmail.com>
@@ -6,17 +7,25 @@
 
 namespace Firebear\ImportExport\Model\Import;
 
+use function array_diff;
+use function array_keys;
+use function array_map;
+use function array_merge;
+use function array_values;
 use Exception;
+use function explode;
 use Firebear\ImportExport\Api\UrlKeyManagerInterface;
 use Firebear\ImportExport\Helper\Additional;
 use Firebear\ImportExport\Helper\Data as FirebearImportExportData;
+use Firebear\ImportExport\Model\Cache\Type\ImportProduct as ImportProductCache;
 use Firebear\ImportExport\Model\Export\RowCustomizer\ProductVideo;
 use Firebear\ImportExport\Model\Import;
 use Firebear\ImportExport\Model\Import\Product\CategoryProcessor;
+use Firebear\ImportExport\Model\Import\Product\Image as ImportImage;
+use Firebear\ImportExport\Model\Import\Product\ImageProcessor as ImportImageProcessor;
 use Firebear\ImportExport\Model\Import\Product\Integration\IntegrationInterface;
 use Firebear\ImportExport\Model\Import\Product\Integration\MageArrayMarketplace;
 use Firebear\ImportExport\Model\Import\Product\Integration\WebkulMarketplace;
-use Firebear\ImportExport\Model\Import\Product\Integration\WyomindInventory;
 use Firebear\ImportExport\Model\Import\Product\MediaVideoGallery;
 use Firebear\ImportExport\Model\Import\Product\OptionFactory;
 use Firebear\ImportExport\Model\Import\Product\Price\Rule\ConditionFactory as ConditionFactoryAlias;
@@ -29,7 +38,12 @@ use Firebear\ImportExport\Model\Translation\Translator;
 use Firebear\ImportExport\Traits\Import\Entity as ImportTrait;
 use Firebear\ImportExport\Ui\Component\Listing\Column\Entity\Import\Attributes\SystemOptions;
 use Firebear\ImportExport\Ui\Component\Listing\Column\Import\Source\Configurable\Type\Options as TypeOptions;
+use function implode;
+use function in_array;
+use function interface_exists;
 use InvalidArgumentException;
+use function is_array;
+use function is_int;
 use Magento\Bundle\Model\Product\Price as BundlePrice;
 use Magento\BundleImportExport\Model\Import\Product\Type\Bundle;
 use Magento\Catalog\Api\Data\CategoryLinkInterface;
@@ -53,6 +67,7 @@ use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory as ProductColl
 use Magento\Catalog\Model\ResourceModel\Product\LinkFactory;
 use Magento\CatalogImportExport\Model\Import\Product as MagentoProduct;
 use Magento\CatalogImportExport\Model\Import\Product\ImageTypeProcessor;
+use Magento\CatalogImportExport\Model\Import\Product\MediaGalleryProcessor;
 use Magento\CatalogImportExport\Model\Import\Product\RowValidatorInterface as ValidatorInterface;
 use Magento\CatalogImportExport\Model\Import\Product\SkuProcessor;
 use Magento\CatalogImportExport\Model\Import\Product\StoreResolver;
@@ -73,6 +88,7 @@ use Magento\Eav\Model\Entity\Attribute\AbstractAttribute;
 use Magento\Eav\Model\EntityFactory;
 use Magento\Eav\Model\ResourceModel\Entity\Attribute\Group\CollectionFactory as AttributeGroupCollectionFactory;
 use Magento\Eav\Model\ResourceModel\Entity\Attribute\Set\CollectionFactory as AttributeSetCollectionFactory;
+use Magento\Framework\App\CacheInterface;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Framework\App\ObjectManager;
@@ -87,6 +103,7 @@ use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Framework\Filesystem;
 use Magento\Framework\Indexer\IndexerRegistry;
 use Magento\Framework\Intl\DateTimeFactory;
+use Magento\Framework\MessageQueue\PublisherInterface;
 use Magento\Framework\Model\ResourceModel\Db\ObjectRelationProcessor;
 use Magento\Framework\Model\ResourceModel\Db\TransactionManagerInterface;
 use Magento\Framework\Module\Manager;
@@ -106,27 +123,16 @@ use Magento\Swatches\Model\ResourceModel\Swatch\CollectionFactory as SwatchColle
 use Magento\Swatches\Model\Swatch;
 use Magento\Tax\Model\ClassModel;
 use Magento\Tax\Model\ResourceModel\TaxClass\CollectionFactory as TaxClassCollectionFactory;
-use Symfony\Component\Console\Output\ConsoleOutput;
-use Zend\Serializer\Serializer;
-use Zend_Db_Select;
-use Zend_Validate_Exception;
-use Zend_Validate_Regex;
-use function array_diff;
-use function array_keys;
-use function array_map;
-use function array_merge;
-use function array_values;
-use function explode;
-use function implode;
-use function in_array;
-use function interface_exists;
-use function is_array;
-use function is_int;
 use function mb_strtolower;
 use function strlen;
 use function strtolower;
 use function substr;
+use Symfony\Component\Console\Output\ConsoleOutput;
 use function version_compare;
+use Zend\Serializer\Serializer;
+use Zend_Db_Select;
+use Zend_Validate_Exception;
+use Zend_Validate_Regex;
 
 /**
  * Import entity product model
@@ -159,6 +165,10 @@ class Product extends MagentoProduct
      * Maximum number of database retries
      */
     const MAX_DB_RETRIES = 5;
+
+    protected $mediaProcessor;
+
+    protected $classTaxNames = [];
 
     /**
      * @var ProductMetadataInterface
@@ -343,7 +353,7 @@ class Product extends MagentoProduct
      * @var WebsiteFactory
      */
     protected $websiteFactory;
-    protected $repeatUrls = [];
+
     /**
      * @var TaxClassCollectionFactory
      */
@@ -412,6 +422,41 @@ class Product extends MagentoProduct
     private $integrations;
 
     /**
+     * @var PublisherInterface
+     */
+    protected $publisher;
+
+    /**
+     * @var ImportImage
+     */
+    protected $importImage;
+
+    /**
+     * @var ImportImageProcessor
+     */
+    protected $importImageProcessor;
+
+    /**
+     * @var CacheInterface
+     */
+    protected $cache;
+
+    /**
+     * @var array
+     */
+    protected $originalImportRows = [];
+
+    /**
+     * @var array
+     */
+    protected $getProductIdByRowId = [];
+
+    /**
+     * @var array
+     */
+    protected $adminAttributeValue = [];
+
+    /**
      * Product constructor.
      * @param Context $context
      * @param FirebearImportExportData $helper
@@ -467,17 +512,20 @@ class Product extends MagentoProduct
      * @param CategoryLinkRepository $categoryLinkRepository
      * @param ActionFactory $productActionFactory
      * @param Translator $translator
-     * @param MediaVideoGallery $mediaProcessor
      * @param array $data
      * @param array $integrations
      * @param array $dateAttrCodes
      * @param CatalogConfig|null $catalogConfig
      * @param DateTimeFactory|null $dateTimeFactory
      * @throws LocalizedException
+     * @throws Exception
      */
     public function __construct(
         Context $context,
+        ImportImage $importImage,
+        ImportImageProcessor $importImageProcessor,
         FirebearImportExportData $helper,
+        CacheInterface $cache,
         Additional $additional,
         ManagerInterface $eventManager,
         StockRegistryInterface $stockRegistry,
@@ -530,7 +578,6 @@ class Product extends MagentoProduct
         CategoryLinkRepository $categoryLinkRepository,
         ActionFactory $productActionFactory,
         Translator $translator,
-        MediaVideoGallery $mediaProcessor,
         array $data = [],
         array $integrations = [],
         array $dateAttrCodes = [],
@@ -538,7 +585,10 @@ class Product extends MagentoProduct
         DateTimeFactory $dateTimeFactory = null
     ) {
         $this->output = $context->getOutput();
+        $this->importImage = $importImage;
+        $this->cache = $cache;
         $this->helper = $helper;
+        $this->importImageProcessor = $importImageProcessor;
         $this->attributeFactory = $attributeFactory;
         $this->eavEntityFactory = $eavEntityFactory;
         $this->groupCollectionFactory = $groupCollectionFactory;
@@ -554,6 +604,14 @@ class Product extends MagentoProduct
         $this->mediaConfig = $mediaConfig;
         $this->translator = $translator;
         $this->productLink = $productLink;
+
+        if (class_exists(MediaGalleryProcessor::class)) {
+            $this->mediaProcessor = ObjectManager::getInstance()
+                ->get(MediaVideoGallery::class);
+            $mediaProcessor = ObjectManager::getInstance()
+                ->get(MediaGalleryProcessor::class);
+        }
+
         if (interface_exists(StockItemImporterInterface::class)) {
             $this->stockItemImporter = ObjectManager::getInstance()
                 ->get(StockItemImporterInterface::class);
@@ -561,6 +619,10 @@ class Product extends MagentoProduct
         if (class_exists(ImageTypeProcessor::class)) {
             $imageTypeProcessor = ObjectManager::getInstance()
                 ->get(ImageTypeProcessor::class);
+        }
+        if (interface_exists(PublisherInterface::class)) {
+            $this->publisher = ObjectManager::getInstance()
+                ->get(PublisherInterface::class);
         }
         if (version_compare($productMetadata->getVersion(), '2.3.0', '>=')) {
             parent::__construct(
@@ -608,6 +670,48 @@ class Product extends MagentoProduct
                 $this->stockItemImporter,
                 $dateTimeFactory,
                 $productRepository
+            );
+        } elseif (version_compare($productMetadata->getVersion(), '2.2.3', '<=')) {
+            parent::__construct(
+                $context->getJsonHelper(),
+                $context->getImportExportData(),
+                $context->getDataSourceModel(),
+                $context->getConfig(),
+                $context->getResource(),
+                $context->getResourceHelper(),
+                $context->getStringUtils(),
+                $context->getErrorAggregator(),
+                $eventManager,
+                $stockRegistry,
+                $stockConfiguration,
+                $stockStateProvider,
+                $catalogData,
+                $importConfig,
+                $resourceFactory,
+                $optionFactory,
+                $setColFactory,
+                $productTypeFactory,
+                $linkFactory,
+                $proxyProdFactory,
+                $uploaderFactory,
+                $filesystem,
+                $stockResItemFac,
+                $localeDate,
+                $dateTime,
+                $context->getLogger(),
+                $indexerRegistry,
+                $storeResolver,
+                $skuProcessor,
+                $categoryProcessor,
+                $validator,
+                $objectRelationProcessor,
+                $transactionManager,
+                $taxClassProcessor,
+                $scopeConfig,
+                $productUrl,
+                $data,
+                $dateAttrCodes,
+                $catalogConfig
             );
         } else {
             parent::__construct(
@@ -685,6 +789,28 @@ class Product extends MagentoProduct
             }
         }
         $this->integrations = $integrations;
+        $this->_fireConstruct();
+    }
+
+    /**
+     * @return string
+     * @throws Exception
+     */
+    public function _getProductEntityLinkField()
+    {
+        return $this->getProductEntityLinkField();
+    }
+
+    /**
+     * @return $this
+     * @throws Exception
+     */
+    public function _fireConstruct()
+    {
+        $this->urlKeyManager
+            ->setEntity($this)
+            ->initUrlKeys();
+        return $this;
     }
 
     /**
@@ -859,8 +985,10 @@ class Product extends MagentoProduct
         foreach ($this->_productTypeModels as $productTypeModel) {
             $productTypeModel->saveData();
         }
+
         $this->_saveLinks();
         $this->_saveStockItem();
+
         if ($this->_replaceFlag) {
             $this->getOptionEntity()->clearProductsSkuToId();
         }
@@ -884,6 +1012,7 @@ class Product extends MagentoProduct
         foreach ($this->productLinkData as $idConfigProduct => $typesLink) {
             $this->addProductLinks($idConfigProduct, $typesLink);
         }
+
         return $this;
     }
 
@@ -904,6 +1033,12 @@ class Product extends MagentoProduct
             foreach ($bunch as $rowNum => $rowData) {
                 if (!$this->isRowAllowedToImport($rowData, $rowNum)) {
                     continue;
+                }
+
+                if (isset($this->_parameters['increase_product_stock_by_qty'])
+                    && $this->_parameters['increase_product_stock_by_qty'] == 1
+                ) {
+                    $rowData['qty'] = (int)($rowData['qty'] + $this->getProductStockQty($rowData[self::COL_SKU]));
                 }
 
                 $sku = $rowData[self::COL_SKU];
@@ -1085,6 +1220,9 @@ class Product extends MagentoProduct
                         break;
                 }
             }
+            if ($this->_replaceFlag && !isset($this->_oldSku[mb_strtolower($skuConf)])) {
+                $skuConf = null;
+            }
             if ($skuConf) {
                 $newData = $rowData;
                 $arrayConf = [];
@@ -1096,8 +1234,8 @@ class Product extends MagentoProduct
                     }
                 }
                 if (!empty($arrayConf)) {
-                    $arrayConf['sku'] = $newData['sku'];
-                    $configurableData[$skuConf][] = $arrayConf;
+                    $arrayConf['sku'] = (string) $newData['sku'];
+                    $configurableData[(string) $skuConf][] = $arrayConf;
                 }
             }
         }
@@ -1128,6 +1266,8 @@ class Product extends MagentoProduct
         $isPriceGlobal = $this->_catalogData->isPriceGlobal();
         $productLimit = null;
         $productsQty = null;
+        $this->importImage->setConfig($this->_parameters);
+
         while ($nextBunch = $this->_dataSourceModel->getNextBunch()) {
             $entityRowsIn = $entityRowsUp = [];
             $attributes = [];
@@ -1142,6 +1282,11 @@ class Product extends MagentoProduct
             }
 
             $prevData = [];
+            $createValuesAllowed = (bool)$this->scopeConfig->getValue(
+                Import::CREATE_ATTRIBUTES_CONF_PATH,
+                ScopeInterface::SCOPE_STORE
+            );
+            $storeIds = $this->getStoreIds();
             foreach ($nextBunch as $rowNum => $rowData) {
                 $time = explode(" ", microtime());
                 $startTime = $time[0] + $time[1];
@@ -1175,12 +1320,6 @@ class Product extends MagentoProduct
                         $rowData['_attribute_set'] = current($collectSets);
                     }
                 }
-                $createValuesAllowed = (bool)$this->scopeConfig->getValue(
-                    Import::CREATE_ATTRIBUTES_CONF_PATH,
-                    ScopeInterface::SCOPE_STORE
-                );
-
-                $storeIds = $this->getStoreIds();
 
                 if (isset($this->_parameters['remove_related_product'])
                     && $this->_parameters['remove_related_product'] == 1
@@ -1202,6 +1341,7 @@ class Product extends MagentoProduct
 
                 $rowData = $this->checkAdditionalImages($rowData);
                 $rowData = $this->customChangeData($rowData);
+
                 if (!$this->validateRow($rowData, $rowNum) || !$this->validateRowByProductType($rowData, $rowNum)) {
                     $this->addLogWriteln(
                         __('product with sku: %1 is not valided', $this->getCorrectSkuAsPerLength($rowData)),
@@ -1212,13 +1352,13 @@ class Product extends MagentoProduct
                     unset($nextBunch[$rowNum]);
                     continue;
                 } else {
-                    $rowData = $this->prepareRowForDb($rowData);
+                    $rowData = $this->stripSlashes($rowData);
                 }
+
                 $productType = isset($rowData[self::COL_TYPE]) ?
                     strtolower($rowData[self::COL_TYPE]) :
                     $this->skuProcessor->getNewSku($this->getCorrectSkuAsPerLength($rowData))['type_id'];
                 // custom
-
                 if ($productType) {
                     $productTypeModel = $this->_productTypeModels[$productType];
                     if ($createValuesAllowed) {
@@ -1246,22 +1386,27 @@ class Product extends MagentoProduct
                     continue;
                 }
 
-                $urlKey = $this->getUrlKey($rowData);
-                if (!empty($rowData[self::URL_KEY])) {
-                    // If url_key column and its value were in the CSV file
-                    $rowData[self::URL_KEY] = $urlKey;
-                } elseif ($this->isNeedToChangeUrlKey($rowData)) {
-                    // If url_key column was empty or even not declared in the CSV file but by the rules it is need to
-                    // be setteed. In case when url_key is generating from name column we have to ensure that the bunch
-                    // of products will pass for the event with url_key column.
-                    $nextBunch[$rowNum][self::URL_KEY] = $rowData[self::URL_KEY] = $urlKey;
-                } elseif (isset($rowData[self::URL_KEY]) || isset($rowData[self::COL_NAME])) {
-                    $rowData[self::URL_KEY] = $urlKey;
+                $urlKey = null;
+                if (!($this->onlyUpdate && empty($rowData[self::URL_KEY]))) {
+                    $urlKey = $this->getUrlKey($rowData);
+                }
+
+                if ($urlKey) {
+                    if (!empty($rowData[self::URL_KEY])) {
+                        // If url_key column and its value were in the CSV file
+                        $rowData[self::URL_KEY] = $urlKey;
+                    } elseif ($this->isNeedToChangeUrlKey($rowData)) {
+                        // If url_key column was empty or even not declared in the CSV file but by the rules
+                        // it is need to be setteed. In case when url_key is generating from name column we
+                        // have to ensure that the bunch of products will pass for the event with url_key column.
+                        $nextBunch[$rowNum][self::URL_KEY] = $rowData[self::URL_KEY] = $urlKey;
+                    } elseif (isset($rowData[self::URL_KEY]) || isset($rowData[self::COL_NAME])) {
+                        $rowData[self::URL_KEY] = $urlKey;
+                    }
                 }
 
                 $this->urlKeys = [];
                 $rowData = $this->applyCategoryLevelSeparator($rowData);
-
                 $rowData = $this->adjustBundleTypeAttributes($rowData);
 
                 if (empty($this->getCorrectSkuAsPerLength($rowData))) {
@@ -1314,8 +1459,8 @@ class Product extends MagentoProduct
                     $rowData['attribute_set_id'] = $this->skuProcessor->getNewSku($checkSku)['attr_set_id'];
                     $rowData[self::COL_ATTR_SET] = $this->skuProcessor->getNewSku($checkSku)['attr_set_code'];
                 }
-                // Entity phase
 
+                // Entity phase
                 if (!isset($this->_oldSku[$checkSku])) {
                     // new row
                     if (!$productLimit || $productsQty < $productLimit) {
@@ -1430,7 +1575,6 @@ class Product extends MagentoProduct
                 if (!array_key_exists($rowSku, $this->websitesCache)) {
                     $this->websitesCache[$rowSku] = [];
                 }
-
                 // Product-to-Website phase
                 if (!empty($rowData[self::COL_PRODUCT_WEBSITES])) {
                     $websiteCodes = explode($this->getMultipleValueSeparator(), $rowData[self::COL_PRODUCT_WEBSITES]);
@@ -1439,7 +1583,6 @@ class Product extends MagentoProduct
                         $this->websitesCache[$rowSku][$websiteId] = true;
                     }
                 }
-
                 // Price rules
                 $rowData = $this->applyPriceRules($rowData);
                 $fixedName = __("Fixed");
@@ -1472,10 +1615,26 @@ class Product extends MagentoProduct
                     continue;
                 }
                 // Media gallery phase
-                $this->processMediaGalleryRows($rowData, $mediaGallery, $existingImages, $uploadedImages, $rowNum);
-                $rowStore = (self::SCOPE_STORE == $rowScope)
-                    ? $this->storeResolver->getStoreCodeToId($rowData[self::COL_STORE])
-                    : 0;
+                if ($this->publisher && isset($this->_parameters['deferred_images']) &&
+                    $this->_parameters['deferred_images']) {
+                    $this->importImage->addMediaGalleryRows(
+                        $rowData,
+                        $mediaGallery,
+                        $existingImages,
+                        $uploadedImages,
+                        $rowNum
+                    );
+                } else {
+                    $this->importImageProcessor->setConfig($this->_parameters);
+                    $this->processMediaGalleryRows(
+                        $rowData,
+                        $mediaGallery,
+                        $existingImages,
+                        $uploadedImages,
+                        $rowNum
+                    );
+                }
+
                 if (!$productType === null) {
                     $previousType = $productType;
                 }
@@ -1502,16 +1661,14 @@ class Product extends MagentoProduct
                     }
                 }
                 if ($productType) {
+                    $rowScope = empty($rowData[self::COL_STORE]) ? self::SCOPE_DEFAULT : self::SCOPE_STORE;
+                    $rowStore = (self::SCOPE_STORE == $rowScope)
+                        ? $this->storeResolver->getStoreCodeToId($rowData[self::COL_STORE])
+                        : 0;
                     $productTypeModel = $this->_productTypeModels[$productType];
 
                     if (!empty($rowData['tax_class_name'])) {
-                        $collectionTax = $this->collectionTaxFactory->create();
-                        $collectionTax->addFieldToFilter('class_type', ClassModel::TAX_CLASS_TYPE_PRODUCT);
-                        foreach ($collectionTax as $taxClass) {
-                            if (strtolower($rowData['tax_class_name']) == strtolower($taxClass->getClassName())) {
-                                $rowData['tax_class_name'] = $taxClass->getClassName();
-                            }
-                        }
+                        $rowData['tax_class_name'] = $this->getCurrentTaxClass($rowData['tax_class_name']);
                         $rowData['tax_class_id'] =
                             $this->taxClassProcessor->upsertTaxClass($rowData['tax_class_name'], $productTypeModel);
                     }
@@ -1538,9 +1695,9 @@ class Product extends MagentoProduct
                         $translateAttributes = $this->_parameters['translate_attributes'] ?? [];
                         $translateStore = (int)($this->_parameters['translate_store_ids'] ?? 0);
                     }
+
                     foreach ($rowData as $attrCode => $attrValue) {
                         $attribute = $this->retrieveAttributeByCode($attrCode);
-                        $tempStore = $rowStore;
                         if ('multiselect' != $attribute->getFrontendInput() && self::SCOPE_NULL == $rowScope) {
                             // skip attribute processing for SCOPE_NULL rows
                             continue;
@@ -1550,20 +1707,36 @@ class Product extends MagentoProduct
                         $attrTable = $attribute->getBackend()->getTable();
                         $storeIds = [0];
 
-                        if ('datetime' == $attribute->getBackendType() && strtotime($attrValue)) {
-                            $attrValue = $this->dateTime->gmDate(
+                        if ('datetime' == $attribute->getBackendType()
+                            && (
+                                in_array($attribute->getAttributeCode(), $this->dateAttrCodes)
+                                || $attribute->getIsUserDefined()
+                            )
+                        ) {
+                            $attrValue = $this->dateTime->formatDate($attrValue, false);
+                        } elseif ('datetime' == $attribute->getBackendType() && strtotime($attrValue)) {
+                            $attrValue = gmdate(
                                 'Y-m-d H:i:s',
                                 $this->_localeDate->date($attrValue)->getTimestamp()
                             );
                         }
 
                         $defaultValue = $this->getDefaultAttrValue($attribute, $rowSku);
-                        $storeValue = $this->getDefaultAttrValue($attribute, $rowSku, $tempStore);
+                        $storeValue = $this->getDefaultAttrValue($attribute, $rowSku, $rowStore);
+
+                        if (!isset($this->adminAttributeValue[$rowSku])) {
+                            $this->adminAttributeValue = [$rowSku => []];
+                        }
+
+                        if (false === $defaultValue && $rowStore == 0) {
+                            $this->adminAttributeValue[$rowSku][$attrCode] = $attrValue;
+                        }
+
                         /*
                          * If storeValue exists and the default value is same as new value then remove it
                          */
-                        if ($storeValue && $defaultValue === $attrValue && $tempStore > 0) {
-                            $this->_deleteStoreAttributeValue($attribute, $rowSku, $tempStore);
+                        if ($storeValue && $defaultValue === (string)$attrValue && $rowStore > 0) {
+                            $this->_deleteStoreAttributeValue($attribute, $rowSku, $rowStore);
                         }
                         if ($this->translator->isTranslatorSet()) {
                             if (!empty($translateAttributes)
@@ -1578,19 +1751,23 @@ class Product extends MagentoProduct
                                 $this->_deleteStoreAttributeValue($attribute, $rowSku, $translateStore);
                             }
                         }
+                        if ($defaultValue && ($defaultValue === (string)$attrValue)) {
+                            continue;
+                        }
 
-                        if ($defaultValue && ($defaultValue === $attrValue)) {
+                        $adminValue = $this->adminAttributeValue[$rowSku][$attrCode] ?? false;
+                        if (false !== $adminValue && $adminValue === $attrValue && $rowStore > 0) {
                             continue;
                         }
 
                         if (self::SCOPE_STORE == $rowScope) {
                             if (self::SCOPE_WEBSITE == $attribute->getIsGlobal()) {
                                 // check website defaults already set
-                                if (!isset($attributes[$attrTable][$rowSku][$attrId][$tempStore])) {
-                                    $storeIds = $this->storeResolver->getStoreIdToWebsiteStoreIds($tempStore);
+                                if (!isset($attributes[$attrTable][$rowSku][$attrId][$rowStore])) {
+                                    $storeIds = $this->storeResolver->getStoreIdToWebsiteStoreIds($rowStore);
                                 }
-                            } elseif (self::SCOPE_STORE == $attribute->getIsGlobal()) {
-                                $storeIds = [$tempStore];
+                            } elseif (self::SCOPE_STORE == $attribute->getIsGlobal() || $attrCode == 'price') {
+                                $storeIds = [$rowStore];
                             }
 
                             if (!isset($this->_oldSku[$checkSku])) {
@@ -1601,7 +1778,9 @@ class Product extends MagentoProduct
                         sort($storeIds);
 
                         foreach ($storeIds as $storeId) {
-                            $attributes[$attrTable][$rowSku][$attrId][$storeId] = $attrValue;
+                            if (!isset($attributes[$attrTable][$rowSku][$attrId][$storeId])) {
+                                $attributes[$attrTable][$rowSku][$attrId][$storeId] = $attrValue;
+                            }
                         }
                         // restore 'backend_model' to avoid 'default' setting
                         $attribute->setBackendModel($backModel);
@@ -1614,7 +1793,6 @@ class Product extends MagentoProduct
                     $this->addLogWriteln(__('product with sku: %1 .... %2s', $sku, $totalTime), $this->output, 'info');
                 }
             }
-
             if (method_exists($this, '_saveProductEntity')) {
                 $this->_saveProductEntity(
                     $entityRowsIn,
@@ -1627,6 +1805,10 @@ class Product extends MagentoProduct
                 );
             }
 
+            $isCached = $this->_parameters['cache_products'] ?? false;
+            if ($isCached) {
+                $this->saveProductsCache($entityRowsIn, $entityRowsUp);
+            }
             $this->afterSaveNewEntities($entityRowsIn);
             $this->addLogWriteln(__('Imported: %1 rows', count($entityRowsIn)), $this->output, 'info');
             $this->addLogWriteln(__('Updated: %1 rows', count($entityRowsUp)), $this->output, 'info');
@@ -1636,13 +1818,15 @@ class Product extends MagentoProduct
                 $this->categoriesCache
             )->_saveProductTierPrices(
                 $tierPrices
-            )->_saveMediaGallery(
-                $mediaGallery
-            )->_saveProductAttributes(
-                $attributes
-            )->_saveProductCategoriesPosition(
-                $this->categoryProductPosition
             );
+            if ($this->publisher && isset($this->_parameters['deferred_images']) &&
+                $this->_parameters['deferred_images']) {
+                $this->importImage->publishBranch();
+            } else {
+                $this->_saveMediaGallery($mediaGallery);
+            }
+            $this->_saveProductAttributes($attributes);
+            $this->_saveProductCategoriesPosition($this->categoryProductPosition);
 
             $this->_eventManager->dispatch(
                 'catalog_product_import_bunch_save_after',
@@ -1653,7 +1837,95 @@ class Product extends MagentoProduct
             $this->saveConfigurationVariations($configurableData, $existingImages);
         }
 
+        $this->cache->clean([ImportProductCache::BUFF_CACHE]);
         return $this;
+    }
+
+    /**
+     * @param $inRows
+     * @param $upRows
+     * @return $this
+     */
+    protected function saveProductsCache($inRows, $upRows)
+    {
+        $entityLinkField = $this->getProductEntityLinkField();
+        if (!$this->originalImportRows) {
+            $this->originalImportRows = $this->cache->load(sha1(ImportProductCache::BUFF_CACHE));
+            $this->originalImportRows = $this->getSerializer()->unserialize($this->originalImportRows) ?? [];
+        }
+
+        foreach ($inRows as $row) {
+            $id = $this->_oldSku[strtolower($row['sku'])]['entity_id'];
+            foreach ($this->originalImportRows[strtolower($row['sku'])] as $item) {
+                $this->cache->save(
+                    1,
+                    $item,
+                    [ImportProductCache::CACHE_TAG . '_' . $id, ImportProductCache::CACHE_TAG]
+                );
+            }
+        }
+
+        $skuById = array_combine(array_column($this->_oldSku, 'entity_id'), array_keys($this->_oldSku));
+        $productIdByRowId = [];
+        if ($upRows) {
+            $productIdByRowId = isset(current($upRows)['entity_id']) ? [] : $this->getProductIdByRowId($upRows);
+        }
+        foreach ($upRows as $row) {
+            $id = $productIdByRowId ? $productIdByRowId[$row[$entityLinkField]] : $row['entity_id'];
+            $sku = $skuById[$id];
+            foreach ($this->originalImportRows[$sku] as $item) {
+                $this->cache->save(
+                    1,
+                    $item,
+                    [ImportProductCache::CACHE_TAG . '_' . $id, ImportProductCache::CACHE_TAG]
+                );
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @param $rows
+     * @return array
+     */
+    protected function getProductIdByRowId($rows)
+    {
+        $select = $this->_connection->select()->from(
+            $this->_connection->getTableName('catalog_product_entity'),
+            ['row_id', 'entity_id']
+        )->where(
+            'row_id IN(?)',
+            array_column($rows, 'row_id')
+        );
+
+        return $this->getProductIdByRowId = $this->_connection->fetchPairs($select);
+    }
+
+    /**
+     * @param $className
+     * @return string
+     */
+    protected function getCurrentTaxClass($className)
+    {
+        if (!$this->classTaxNames) {
+            $select = $this->_connection->select()->from(
+                $this->_connection->getTableName('tax_class'),
+                'class_name'
+            )->where(
+                'class_type = ?',
+                ClassModel::TAX_CLASS_TYPE_PRODUCT
+            );
+
+            $result = [];
+            foreach ($this->_connection->fetchCol($select) as $item) {
+                $result [strtolower($item)] = $item;
+            }
+            $this->classTaxNames = $result;
+        }
+
+        $key = strtolower($className);
+        return key_exists($key, $this->classTaxNames) ? $this->classTaxNames[$key] : $className;
     }
 
     /**
@@ -1665,13 +1937,7 @@ class Product extends MagentoProduct
      */
     protected function uploadMediaFiles($fileName, $renameFileOff = false, $existingUpload = [])
     {
-        try {
-            $result = $this->_getUploader()->move($fileName, $renameFileOff, $existingUpload);
-            return $result['file'];
-        } catch (Exception $e) {
-            $this->addLogWriteln($e->getMessage(), $this->getOutput(), 'error');
-            return '';
-        }
+        return $this->importImageProcessor->uploadMediaFiles($fileName, $renameFileOff, $existingUpload);
     }
 
     /**
@@ -1935,34 +2201,7 @@ class Product extends MagentoProduct
      */
     protected function removeExistingImages($newMediaValues)
     {
-        try {
-            $this->initMediaGalleryResources();
-            if (isset($this->_parameters['remove_images_dir'])
-                && $this->_parameters['remove_images_dir'] == 1
-            ) {
-                foreach ($newMediaValues as $newMediaValue) {
-                    $mediaPath = DirectoryList::PUB . DIRECTORY_SEPARATOR . DirectoryList::MEDIA .
-                        DIRECTORY_SEPARATOR . $this->mediaConfig->getMediaPath($newMediaValue['value']);
-                    $productImage = $this->_mediaDirectory
-                        ->getAbsolutePath($mediaPath);
-                    if ($this->_mediaDirectory->isExist($productImage)) {
-                        $this->addLogWriteln(
-                            __('Remove Image for Product %1 from media directory', $newMediaValue[self::COL_SKU]),
-                            $this->getOutput(),
-                            'info'
-                        );
-                        $this->_mediaDirectory->delete($productImage);
-                    }
-                }
-            }
-            $this->_connection->delete(
-                $this->mediaGalleryTableName,
-                $this->_connection->quoteInto('value_id IN (?)', $newMediaValues)
-            );
-        } catch (Exception $e) {
-            $this->addLogWriteln($e->getMessage(), $this->getOutput(), 'error');
-        }
-
+        $this->importImageProcessor->removeExistingImages($newMediaValues);
         return $this;
     }
 
@@ -2117,7 +2356,7 @@ class Product extends MagentoProduct
                 $attr = $this->retrieveAttributeByCode(self::URL_KEY);
                 $select = $this->getConnection()->select()
                     ->from($attr->getBackendTable(), ['value'])
-                    ->where($productEntityLinkField .' = (?)', $exiting['entity_id'])
+                    ->where($productEntityLinkField . ' = (?)', $exiting['entity_id'])
                     ->where('attribute_id = (?)', $attr->getAttributeId());
                 $urlKey = $this->getConnection()->fetchOne($select);
             }
@@ -2181,9 +2420,6 @@ class Product extends MagentoProduct
         //
         $rowData = $this->_parseAdditionalAttributes($rowData);
         $rowData = $this->setStockUseConfigFieldsValues($rowData);
-        if ($this->_parameters['generate_url'] && isset($rowData[self::COL_NAME])) {
-            $rowData = $this->generateUrlKey($rowData);
-        }
 
         if (array_key_exists('status', $rowData)
             && $rowData['status'] != Status::STATUS_ENABLED
@@ -2486,6 +2722,12 @@ class Product extends MagentoProduct
                                 $scopeStore = self::SCOPE_STORE == $this->getRowScope($rowData);
                                 $attrOptions = $attrParams['options'];
                                 if ($scopeStore && $storeCode && !empty($attrParams['options_store'][$storeCode])) {
+                                    if (isset($attrOptions[$lowerAttrValue]) &&
+                                        !isset($attrParams['options_store'][$storeCode][$lowerAttrValue])
+                                    ) {
+                                        $attrParams['options_store'][$storeCode][$lowerAttrValue] =
+                                            $attrOptions[$lowerAttrValue];
+                                    }
                                     $attrOptions = $attrParams['options_store'][$storeCode];
                                 }
 
@@ -2805,6 +3047,11 @@ class Product extends MagentoProduct
             }
         }
 
+        if ($this->_fileUploader) {
+            $this->_fileUploader->setEntity($this);
+            $this->_fileUploader->setOutput($this->getOutput());
+        }
+
         return $this->_fileUploader;
     }
 
@@ -2932,11 +3179,8 @@ class Product extends MagentoProduct
      */
     protected function getUrlKey($rowData)
     {
-        $url = parent::getUrlKey($rowData);
-        if ($url === '') {
-            $url = $this->generateUrlKey($rowData)[self::URL_KEY];
-        }
-        $url = $this->productUrl->formatUrlKey($url);
+        $url = $this->productUrl->formatUrlKey(parent::getUrlKey($rowData));
+        $this->urlKeyManager->addUrlKeys($rowData[self::COL_SKU], $url);
         return $url;
     }
 
@@ -2948,16 +3192,24 @@ class Product extends MagentoProduct
      */
     protected function checkAdditionalImages($rowData)
     {
-        if (version_compare($this->productMetadata->getVersion(), '2.1.11', '<')) {
-            $newImage = [];
-            if (isset($rowData['additional_images'])) {
-                $importImages = explode($this->getMultipleValueSeparator(), $rowData['additional_images']);
-                $newImage = $importImages;
+        return $this->importImageProcessor->checkAdditionalImages($rowData);
+    }
+
+    /**
+     * @param array $rowData
+     * @return array
+     */
+    public function stripSlashes(array $rowData)
+    {
+        foreach ($rowData as $key => $val) {
+            if ($key === '') {
+                continue;
             }
-            if (!empty($newImage)) {
-                $rowData['additional_images'] = implode(',', $newImage);
+            if (!empty($val)) {
+                $rowData[$key] = stripslashes((string) $val);
             }
         }
+
         return $rowData;
     }
 
@@ -2970,14 +3222,7 @@ class Product extends MagentoProduct
     {
         $rowData = $this->customFieldsMapping($rowData);
 
-        foreach ($rowData as $key => $val) {
-            if ($key === '') {
-                continue;
-            }
-            if (!empty($val)) {
-                $rowData[$key] = stripslashes($val);
-            }
-        }
+        $this->stripSlashes($rowData);
 
         static $lastSku = null;
 
@@ -3260,13 +3505,17 @@ class Product extends MagentoProduct
                     $simpleValAttr[] = $simpleValConfig['copy_simple_value_attributes'];
                 }
             }
+            /**
+             * @var string $skuConf
+             * @var array $elements
+             */
             foreach ($data as $skuConf => $elements) {
+                $skuConf = (string) $skuConf;
                 if (count($elements) < 1) {
                     continue;
                 }
-                $checkSku = $skuConf;
                 if (version_compare($this->productMetadata->getVersion(), '2.2.0', '>=')) {
-                    $checkSku = strtolower($skuConf);
+                    $checkSku = mb_strtolower($skuConf);
                 }
                 $categories = $websites = [];
                 $additionalRows = [];
@@ -3948,7 +4197,7 @@ class Product extends MagentoProduct
 
                     $platform = null;
                     $platformName = $this->_parameters['platforms'] ?? null;
-                    if ($platformName && $platformName != 'magento2') {
+                    if ($platformName && is_string($platformName) && $platformName != 'magento2') {
                         $platform = $this->helper->getPlatformModel($platformName);
                     }
                     /* use platform @todo remove this */
@@ -4058,7 +4307,6 @@ class Product extends MagentoProduct
         $source = $this->_getSource();
         $currentDataSize = 0;
         $bunchRows = [];
-        $prevData = [];
         $startNewBunch = false;
         $nextRowBackup = [];
         $maxDataSize = $this->_resourceHelper->getMaxDataSize();
@@ -4075,6 +4323,7 @@ class Product extends MagentoProduct
         if (isset($this->_parameters['job_id'])) {
             $jobId = $this->_parameters['job_id'];
         }
+
         while ($source->valid() || $bunchRows) {
             if ($startNewBunch || !$source->valid()) {
                 if (version_compare($this->productMetadata->getVersion(), '2.2.4', '>=')) {
@@ -4100,6 +4349,21 @@ class Product extends MagentoProduct
             if ($source->valid()) {
                 try {
                     $rowData = $source->current();
+                    $isCached = $this->_parameters['cache_products'] ?? false;
+                    if ($isCached) {
+                        $currentRowHash = sha1(trim(implode('', $rowData)));
+                        $cache = $this->cache->load($currentRowHash);
+                        if ($cache) {
+                            $this->addLogWriteln(
+                                __('Product %1 has not changed', $rowData['sku']),
+                                $this->output,
+                                'info'
+                            );
+                            $source->next();
+                            continue;
+                        }
+                        $this->originalImportRows[strtolower($rowData['sku'])][] = $currentRowHash;
+                    }
                     if (array_key_exists('sku', $rowData)) {
                         $skuSet[$rowData['sku']] = true;
                     }
@@ -4148,16 +4412,24 @@ class Product extends MagentoProduct
                     }
                 }
 
+                if ($this->onlyUpdate) {
+                    foreach ($rowData as $key => $value) {
+                        if ('' == $value) {
+                            unset($rowData[$key]);
+                        }
+                    }
+                }
+
                 if ($this->getBehavior() == Import::BEHAVIOR_REPLACE) {
                     if (isset($rowData['attribute_set_code'])) {
                         $rowData['_attribute_set'] = $rowData['attribute_set_code'];
                     }
                 }
-
+                $rowData = $this->processUrlKey($rowData);
                 /* specify url_key for to avoid product repository load
                 in \Magento\CatalogUrlRewrite\Observer\AfterImportDataObserver*/
                 if (empty($rowData[self::URL_KEY])) {
-                    $rowData[self::URL_KEY] = $this->getUrlKey($rowData);
+                    $rowData[self::URL_KEY] = $this->onlyUpdate ? '' : $this->getUrlKey($rowData);
                 }
 
                 if ($this->validateRow($rowData, $source->key())) {
@@ -4191,7 +4463,32 @@ class Product extends MagentoProduct
         $this->getOptionEntity()->validateAmbiguousData();
         $this->_processedEntitiesCount = (count($skuSet)) ?: $this->_processedRowsCount;
 
+        $this->cache->clean([ImportProductCache::BUFF_CACHE]);
+        $this->cache->save(
+            $this->getSerializer()->serialize($this->originalImportRows),
+            sha1(ImportProductCache::BUFF_CACHE)
+        );
+
         return $this;
+    }
+
+    /**
+     * @param $rowData
+     * @return array
+     * @throws Exception
+     */
+    public function processUrlKey($rowData)
+    {
+        if ($this->isSkuExist($rowData[self::COL_SKU])) {
+            $rowData[self::URL_KEY] = $this->urlKeyManager
+                ->getUrlKeyForSku($rowData[self::COL_SKU]);
+        }
+        if ($this->_parameters['generate_url'] == 1
+            && $this->isNeedToChangeUrlKey($rowData)
+        ) {
+            $rowData = $this->generateUrlKey($rowData);
+        }
+        return $rowData;
     }
 
     /**
@@ -4529,8 +4826,9 @@ class Product extends MagentoProduct
      */
     public function getCorrectSkuAsPerLength(array $rowData)
     {
-        return strlen($rowData[self::COL_SKU]) > Sku::SKU_MAX_LENGTH ?
-            substr($rowData[self::COL_SKU], 0, Sku::SKU_MAX_LENGTH) : $rowData[self::COL_SKU];
+        $sku = (string) $rowData[self::COL_SKU];
+        return mb_strlen($sku) > Sku::SKU_MAX_LENGTH ?
+            mb_substr($sku, 0, Sku::SKU_MAX_LENGTH) : $sku;
     }
 
     /**
@@ -4994,6 +5292,17 @@ class Product extends MagentoProduct
         }
 
         $rowData[self::COL_MEDIA_IMAGE] = [];
+        $imagePosition = 0;
+        if (isset($existingImages[$rowSku])) {
+            $existingProductImages = $existingImages[$rowSku];
+            $existingImagesPosition = array_map(
+                function ($value) {
+                    return (int) $value['position'] ?? 0;
+                },
+                $existingProductImages
+            );
+            $imagePosition = max($existingImagesPosition);
+        }
         foreach ($rowImages as $column => $columnImages) {
             foreach ($columnImages as $position => $columnImage) {
                 list($isAlreadyUploaded, $alreadyUploadedFile) = $this
@@ -5029,14 +5338,18 @@ class Product extends MagentoProduct
                     if ($column == self::COL_MEDIA_IMAGE) {
                         $rowData[$column][] = $uploadedFile;
                     }
-
+                    $pos = ++$imagePosition;
                     $mediaData = [
                         'attribute_id' => $this->getMediaGalleryAttributeId(),
                         'label' => isset($rowLabels[$column][$position]) ? $rowLabels[$column][$position] : '',
-                        'position' => $position + 1,
+                        'position' => $pos,
                         'disabled' => isset($disabledImages[$columnImage]) ? '1' : '0',
                         'value' => $uploadedFile,
                     ];
+
+                    if ($this->_getUploader()->checkValidUrl($columnImage)) {
+                        $mediaData[ProductVideo::VIDEO_URL_COLUMN] = $columnImage;
+                    }
 
                     if (version_compare($this->productMetadata->getVersion(), '2.2.4', '>=')) {
                         $storeIds = $this->getStoreIds();
@@ -5120,20 +5433,40 @@ class Product extends MagentoProduct
      */
     protected function checkAlreadyUploadedImages(&$existingImages, $columnImage, $rowSku)
     {
-        $uploadedFileName = hash('sha256', $columnImage);
-        $isUploaded = $this->getUploader()::getDispersionPath($uploadedFileName)
-            . DIRECTORY_SEPARATOR . $uploadedFileName;
-        $isAlreadyUploaded = false;
-        $alreadyUploadedFile = '';
-        foreach ($this->getUploader()->getAllowedFileExtension() as $fileExtension) {
-            $alreadyUploadedFile = $isUploaded . '.' . $fileExtension;
-            if (array_key_exists($rowSku, $existingImages)
-                && array_key_exists($alreadyUploadedFile, $existingImages[$rowSku])
-            ) {
-                $isAlreadyUploaded = true;
-                break;
-            }
+        return $this->importImageProcessor->checkAlreadyUploadedImages($existingImages, $columnImage, $rowSku);
+    }
+
+    /**
+     * @param array $mediaGalleryData
+     * @return $this|MagentoProduct
+     */
+    protected function _saveMediaGallery(array $mediaGalleryData)
+    {
+        if (empty($mediaGalleryData)) {
+            return $this;
         }
-        return [$isAlreadyUploaded, $alreadyUploadedFile];
+
+        if (!class_exists(MediaGalleryProcessor::class)) {
+            parent::_saveMediaGallery($mediaGalleryData);
+            return $this;
+        }
+
+        $this->mediaProcessor->saveMediaGallery($mediaGalleryData);
+
+        return $this;
+    }
+
+    /**
+     * Get existing images for current bunch
+     *
+     * @param array $bunch
+     * @return array
+     */
+    protected function getExistingImages($bunch)
+    {
+        if (!class_exists(MediaGalleryProcessor::class)) {
+            return parent::getExistingImages($bunch);
+        }
+        return $this->mediaProcessor->getExistingImages($bunch);
     }
 }

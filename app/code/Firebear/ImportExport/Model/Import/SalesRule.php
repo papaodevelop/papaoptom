@@ -9,6 +9,8 @@ use Firebear\ImportExport\Traits\Import\Entity as ImportTrait;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Serialize\Serializer\Json as Serializer;
+use Magento\Customer\Model\ResourceModel\Group\CollectionFactory as GroupCollectionFactory;
+use Magento\SalesRule\Model\ResourceModel\RuleFactory as RuleResourceFactory;
 use Magento\SalesRule\Model\RuleFactory;
 use Magento\ImportExport\Model\Import;
 use Magento\ImportExport\Model\Import\AbstractEntity;
@@ -71,6 +73,34 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
     protected $importExportData;
 
     /**
+     * Customer group collection factory
+     *
+     * @var GroupCollectionFactory
+     */
+    protected $groupCollectionFactory;
+
+    /**
+     * Rule resource
+     *
+     * @var \Magento\SalesRule\Model\ResourceModel\Rule
+     */
+    protected $ruleResource;
+
+    /**
+     * Rule resource factory
+     *
+     * @var RuleResourceFactory
+     */
+    protected $ruleResourceFactory;
+
+    /**
+     * Customer group ids
+     *
+     * @var array
+     */
+    protected $groupIds;
+
+    /**
      * Field list
      *
      * @var array
@@ -115,6 +145,20 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
     ];
 
     /**
+     * @var array
+     */
+    protected $_availableBehaviors = [
+        \Magento\ImportExport\Model\Import::BEHAVIOR_ADD_UPDATE,
+        \Magento\ImportExport\Model\Import::BEHAVIOR_DELETE,
+        \Magento\ImportExport\Model\Import::BEHAVIOR_REPLACE,
+    ];
+
+    /**
+     * @var bool
+     */
+    protected $isReplace = false;
+
+    /**
      * Initialize import
      *
      * @param Context $context
@@ -124,6 +168,8 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
      * @param ConditionFactory $conditionFactory
      * @param ActionFactory $actionFactory
      * @param Serializer $serializer
+     * @param GroupCollectionFactory $groupCollectionFactory
+     * @param RuleResourceFactory $ruleResourceFactory
      * @param array $data
      */
     public function __construct(
@@ -134,6 +180,8 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
         ConditionFactory $conditionFactory,
         ActionFactory $actionFactory,
         Serializer $serializer,
+        GroupCollectionFactory $groupCollectionFactory,
+        RuleResourceFactory $ruleResourceFactory,
         array $data = []
     ) {
         $this->_logger = $context->getLogger();
@@ -145,6 +193,8 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
         $this->conditionFactory = $conditionFactory;
         $this->actionFactory = $actionFactory;
         $this->serializer = $serializer;
+        $this->groupCollectionFactory = $groupCollectionFactory;
+        $this->ruleResourceFactory = $ruleResourceFactory;
 
         parent::__construct(
             $context->getStringUtils(),
@@ -182,8 +232,9 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
                         $this->delete($rowData);
                         break;
                     case Import::BEHAVIOR_REPLACE:
-                        $this->delete($rowData);
-                        $this->save($rowData);
+                        if ($this->isReplace) {
+                            $this->save($rowData);
+                        }
                         break;
                     case Import::BEHAVIOR_ADD_UPDATE:
                         $this->save($rowData);
@@ -282,6 +333,28 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
      */
     public function validateRowForUpdate(array $rowData, $rowNumber)
     {
+        if (!empty($rowData[self::COLUMN_RULE_ID])) {
+            $this->validateExistEntity($rowData[self::COLUMN_RULE_ID], $rowNumber);
+        }
+
+        if (!empty($rowData['code'])) {
+            $ruleId = $this->getRuleIdByCode($rowData['code']);
+            if ($ruleId) {
+                if (/* the rule is new */
+                    empty($rowData[self::COLUMN_RULE_ID]) ||
+                    /* the rule is different */
+                    (!empty($rowData[self::COLUMN_RULE_ID]) &&
+                    $rowData[self::COLUMN_RULE_ID] != $ruleId)
+                ) {
+                    $errorMessage = __(
+                        'coupon code %1 already belongs to another rule.',
+                        $rowData['code']
+                    );
+                    $this->addRowError($errorMessage, $rowNumber);
+                }
+            }
+        }
+
         if (!empty($rowData['conditions_serialized'])) {
             $conditions = $this->serializer->unserialize($rowData['conditions_serialized']);
             if (is_array($conditions)) {
@@ -300,6 +373,30 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
                 $errorMessage = __('invalid actions serialized.');
                 $this->addRowError($errorMessage, $rowNumber);
             }
+        }
+
+        if (!empty($rowData['customer_group_ids'])) {
+            $this->validateCustomerGroups($rowData['customer_group_ids'], $rowNumber);
+        }
+    }
+
+    /**
+     * Validate customer group ids
+     *
+     * @param string $groupIds
+     * @param int $rowNumber
+     * @return void
+     */
+    protected function validateCustomerGroups($groupIds, $rowNumber)
+    {
+        $groupIds = explode(',', $groupIds);
+        $absentGroupIds = array_diff($groupIds, $this->getGroupIds());
+        if (0 < count($absentGroupIds)) {
+            $errorMessage = __(
+                'the customer group ids %1 is not exist.',
+                implode(',', $absentGroupIds)
+            );
+            $this->addRowError($errorMessage, $rowNumber);
         }
     }
 
@@ -458,6 +555,37 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
     }
 
     /**
+     * Validate exist entity
+     *
+     * @param string $ruleId
+     * @param int $rowNumber
+     * @return bool
+     */
+    protected function validateExistEntity($ruleId, $rowNumber)
+    {
+        $resource = $this->getRuleResource();
+        $connection = $resource->getConnection();
+
+        $result = (bool)$connection->fetchOne(
+            $connection->select()
+                ->from($resource->getMainTable(), [self::COLUMN_RULE_ID])
+                ->where(self::COLUMN_RULE_ID . ' = ?', $ruleId)
+                ->limit(1)
+        );
+
+        if (!$result && ($this->getBehavior() != Import::BEHAVIOR_REPLACE)) {
+            $errorMessage = __('rule with id %1 not found.', $ruleId);
+            $this->addRowError($errorMessage, $rowNumber);
+        }
+
+        if ($result && ($this->getBehavior() == Import::BEHAVIOR_REPLACE)) {
+            $this->isReplace = true;
+        }
+
+        return $result;
+    }
+
+    /**
      * Validate conditions model
      *
      * @param string $model
@@ -503,6 +631,38 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
     }
 
     /**
+     * Retrieve rule id by code
+     *
+     * @param string $code
+     * @return string|null
+     */
+    protected function getRuleIdByCode($code)
+    {
+        $resource = $this->getRuleResource();
+        $connection = $resource->getConnection();
+
+        return $connection->fetchOne(
+            $connection->select()
+                ->from($resource->getTable('salesrule_coupon'), [self::COLUMN_RULE_ID])
+                ->where('code = ?', $code)
+                ->limit(1)
+        );
+    }
+
+    /**
+     * Retrieve customer group ids
+     *
+     * @return array
+     */
+    protected function getGroupIds()
+    {
+        if (null === $this->groupIds) {
+            $this->groupIds = $this->groupCollectionFactory->create()->getAllIds();
+        }
+        return $this->groupIds;
+    }
+
+    /**
      * Delete row
      *
      * @param array $rowData
@@ -529,15 +689,12 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
     protected function save(array $rowData)
     {
         $rule = $this->ruleFactory->create();
+        /* init exist rule */
         if (!empty($rowData[self::COLUMN_RULE_ID])) {
             $rule->load($rowData[self::COLUMN_RULE_ID]);
-        }
-
-        if ($rule->getId()) {
             $this->countItemsUpdated++;
         } else {
             $this->countItemsCreated++;
-            $rowData[self::COLUMN_RULE_ID] = null;
         }
 
         $conditions = $this->serializer->unserialize(
@@ -552,6 +709,10 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
             if (!in_array($field, $this->fields)) {
                 unset($rowData[$field]);
             }
+        }
+
+        if (isset($rowData['code'])) {
+            $rule->setCouponCode($rowData['code']);
         }
 
         $rule->addData($rowData);
@@ -695,6 +856,19 @@ class SalesRule extends AbstractEntity implements ImportAdapterInterface
             }
         }
         return $actions['value'];
+    }
+
+    /**
+     * Retrieve rule resource
+     *
+     * @return \Magento\SalesRule\Model\ResourceModel\Rule
+     */
+    protected function getRuleResource()
+    {
+        if (null === $this->ruleResource) {
+            $this->ruleResource = $this->ruleResourceFactory->create();
+        }
+        return $this->ruleResource;
     }
 
     /**

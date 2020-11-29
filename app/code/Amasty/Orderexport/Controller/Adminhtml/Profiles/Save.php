@@ -100,6 +100,11 @@ class Save extends \Amasty\Orderexport\Controller\Adminhtml\Profiles
                 }
 
                 $data['field_mapping'] = serialize($mappings);
+
+                if (!isset($data['order_suppliers']))
+                    $data['order_suppliers']=0;
+
+
                 $profile->setData($data);
                 $this->backendSession->setPageData($profile->getData());
                 $this->profilesRepository->save($profile);

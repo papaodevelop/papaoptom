@@ -146,7 +146,13 @@
                     <item name="source" xsi:type="string">import</item>
                     <item name="sortOrder" xsi:type="number">40</item>
                     <item name="dataScope" xsi:type="string">cron</item>
-                    <item name="notice" xsi:type="string">↑ Use this field if you have good cron knowledge.</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="link" xsi:type="string">https://firebearstudio.com/blog/improved-import-magento-2-extension-manual.html#How_to_use_cron</item>
+                        <item name="description" xsi:type="string" translate="true">
+                            ↑ Use this field if you have good cron knowledge.
+                        </item>
+                    </item>
+<!--                    <item name="notice" xsi:type="string">↑ Use this field if you have good cron knowledge.</item>-->
                 </item>
             </argument>
         </field>
@@ -182,6 +188,11 @@
                         <item name="false" xsi:type="number">0</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            If the imported product or category has ‘url_key’ value that already exists, it will be incremented to allow new product or category creation.
+                        </item>
+                    </item>
                 </item>
             </argument>
         </field>
@@ -200,6 +211,83 @@
                         <item name="false" xsi:type="number">0</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Launches catalog re-index after the import process is finished. Enable to make the products appear at the frontend right after the import.
+                        </item>
+                    </item>
+                </item>
+            </argument>
+        </field>
+        <field name="generate_shipment_by_track">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">boolean</item>
+                    <item name="label" xsi:type="string" translate="true">Auto generating shipment by track info</item>
+                    <item name="formElement" xsi:type="string">checkbox</item>
+                    <item name="source" xsi:type="string">import</item>
+                    <item name="sortOrder" xsi:type="number">90</item>
+                    <item name="dataScope" xsi:type="string">generate_shipment_by_track</item>
+                    <item name="prefer" xsi:type="string">toggle</item>
+                    <item name="component" xsi:type="string">Firebear_ImportExport/js/form/element/checkbox-switch</item>
+                    <item name="valueMap" xsi:type="array">
+                        <item name="true" xsi:type="number">1</item>
+                        <item name="false" xsi:type="number">0</item>
+                    </item>
+                    <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Automatically generates shipment for the order whenever you import tracking codes.
+                        </item>
+                    </item>
+                </item>
+            </argument>
+        </field>
+        <field name="generate_invoice_by_track">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">boolean</item>
+                    <item name="label" xsi:type="string" translate="true">Auto generating invoice by track info</item>
+                    <item name="formElement" xsi:type="string">checkbox</item>
+                    <item name="source" xsi:type="string">import</item>
+                    <item name="sortOrder" xsi:type="number">95</item>
+                    <item name="dataScope" xsi:type="string">generate_invoice_by_track</item>
+                    <item name="prefer" xsi:type="string">toggle</item>
+                    <item name="component" xsi:type="string">Firebear_ImportExport/js/form/element/checkbox-switch</item>
+                    <item name="valueMap" xsi:type="array">
+                        <item name="true" xsi:type="number">1</item>
+                        <item name="false" xsi:type="number">0</item>
+                    </item>
+                    <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Automatically generates invoice for the order whenever you import tracking codes.
+                        </item>
+                    </item>
+                </item>
+            </argument>
+        </field>
+        <field name="send_email">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">boolean</item>
+                    <item name="label" xsi:type="string" translate="true">Send email from new tracks</item>
+                    <item name="formElement" xsi:type="string">checkbox</item>
+                    <item name="source" xsi:type="string">import</item>
+                    <item name="sortOrder" xsi:type="number">100</item>
+                    <item name="dataScope" xsi:type="string">send_email</item>
+                    <item name="prefer" xsi:type="string">toggle</item>
+                    <item name="component" xsi:type="string">Firebear_ImportExport/js/form/element/checkbox-switch</item>
+                    <item name="valueMap" xsi:type="array">
+                        <item name="true" xsi:type="number">1</item>
+                        <item name="false" xsi:type="number">0</item>
+                    </item>
+                    <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Automatically sends an email notification to the customer whenever you import tracking codes.
+                        </item>
+                    </item>
                 </item>
             </argument>
         </field>
@@ -258,28 +346,11 @@
                     <item name="formElement" xsi:type="string">select</item>
                     <item name="source" xsi:type="string">platforms</item>
                     <item name="sortOrder" xsi:type="number">51</item>
-                </item>
-            </argument>
-        </field>
-        <field name="send_email">
-            <argument name="data" xsi:type="array">
-                <item name="config" xsi:type="array">
-                    <item name="dataType" xsi:type="string">boolean</item>
-                    <item name="label" xsi:type="string" translate="true">Send email from new tracks</item>
-                    <item name="formElement" xsi:type="string">checkbox</item>
-                    <item name="source" xsi:type="string">import</item>
-                    <item name="sortOrder" xsi:type="number">52</item>
-                    <item name="dataScope" xsi:type="string">send_email</item>
-                    <item name="prefer" xsi:type="string">toggle</item>
-                    <item name="component" xsi:type="string">Firebear_ImportExport/js/form/element/checkbox-switch</item>
-                    <item name="valuesForOptions" xsi:type="array">
-                        <item name="order" xsi:type="string">order</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Changes product attribute mapping to support Shopify and MagMi product files.
+                        </item>
                     </item>
-                    <item name="valueMap" xsi:type="array">
-                        <item name="true" xsi:type="number">1</item>
-                        <item name="false" xsi:type="number">0</item>
-                    </item>
-                    <item name="default" xsi:type="number">0</item>
                 </item>
             </argument>
         </field>
@@ -302,6 +373,11 @@
                         <item name="catalog_product" xsi:type="string">catalog_product</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            If enabled, will clear values of ALL optional product attributes, such as ‘size’ and ‘color’.
+                        </item>
+                    </item>
                     <item name="notice" xsi:type="string">↑ Empty/deselect values for ALL optional attributes you are
                         importing. Use carefully.
                     </item>
@@ -327,6 +403,11 @@
                         <item name="catalog_product" xsi:type="string">catalog_product</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Grouped products from the imported list, which are already present at the store, will have simple products assigned to them removed. Only simple products from the imported list will be assigned to such grouped.
+                        </item>
+                    </item>
                     <item name="notice" xsi:type="string">↑ Remove Product Association (supported Grouped)</item>
                 </item>
             </argument>
@@ -350,6 +431,11 @@
                         <item name="catalog_product" xsi:type="string">catalog_product</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Clears images association of imported products if they already exist at the store. Only images from the import list will be assigned.
+                        </item>
+                    </item>
                     <item name="notice" xsi:type="string">↑ All existing image allocation will be removed from db (not from directory)</item>
                 </item>
             </argument>
@@ -373,6 +459,11 @@
                         <item name="catalog_product" xsi:type="string">catalog_product</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            If ‘Remove All Images’ enabled, also deletes images from the Magento 2 storage folder.
+                        </item>
+                    </item>
                     <item name="notice" xsi:type="string">↑ Remove Images from the directory</item>
                 </item>
             </argument>
@@ -396,6 +487,12 @@
                         <item name="catalog_product" xsi:type="string">catalog_product</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="link" xsi:type="string">https://firebearstudio.com/blog/improved-import-magento-2-extension-manual.html#Installing_Imagick_for_PHP_7_for_Magneto_2_Enterprise_and_Cloud_using_image_watermark_option</item>
+                        <item name="description" xsi:type="string" translate="true">
+                            Allows image resize option for products. Requires Imagick for PHP 7 library installed.
+                        </item>
+                    </item>
                     <item name="notice" xsi:type="string">↑ Images Will be resized after import.</item>
                 </item>
             </argument>
@@ -419,6 +516,11 @@
                         <item name="catalog_product" xsi:type="string">catalog_product</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Clears website association of imported products if they already exist at the store. Only websites from the import list will be assigned.
+                        </item>
+                    </item>
                     <item name="notice" xsi:type="string">↑ Removes any old Websites Assigned to Product</item>
                 </item>
             </argument>
@@ -442,6 +544,11 @@
                         <item name="catalog_product" xsi:type="string">catalog_product</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Clears categories association of imported products if they already exist at the store. Only categories from the import list will be assigned.
+                        </item>
+                    </item>
                     <item name="notice" xsi:type="string">↑ Removes old Categories Assigned to Product</item>
                 </item>
             </argument>
@@ -465,6 +572,11 @@
                         <item name="catalog_product" xsi:type="string">catalog_product</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Clears related product association of imported products if they already exist at the store. Only related products from the import list will be assigned.
+                        </item>
+                    </item>
                     <item name="notice" xsi:type="string">↑ Old related products will be replaced by new related products from import file</item>
                 </item>
             </argument>
@@ -488,6 +600,11 @@
                         <item name="catalog_product" xsi:type="string">catalog_product</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Clears cross-sell products association of imported products if they already exist at the store. Only cross-sell products from the import list will be assigned.
+                        </item>
+                    </item>
                     <item name="notice" xsi:type="string">↑ Old crosssell products will be replaced by new crosssell products from import file</item>
                 </item>
             </argument>
@@ -511,7 +628,35 @@
                         <item name="catalog_product" xsi:type="string">catalog_product</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Clears up-sell products association of imported products if they already exist at the store. Only up-sell products from the impot list will be assigned.
+                        </item>
+                    </item>
                     <item name="notice" xsi:type="string">↑ Old upsell products will be replaced by new upsell products from import file</item>
+                </item>
+            </argument>
+        </field>
+        <field name="increase_product_stock_by_qty">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">boolean</item>
+                    <item name="label" xsi:type="string" translate="true">Add product QTY to existing value</item>
+                    <item name="formElement" xsi:type="string">checkbox</item>
+                    <item name="source" xsi:type="string">import</item>
+                    <item name="sortOrder" xsi:type="number">160</item>
+                    <item name="dataScope" xsi:type="string">increase_product_stock_by_qty</item>
+                    <item name="prefer" xsi:type="string">toggle</item>
+                    <item name="valueMap" xsi:type="array">
+                        <item name="true" xsi:type="number">1</item>
+                        <item name="false" xsi:type="number">0</item>
+                    </item>
+                    <item name="component" xsi:type="string">Firebear_ImportExport/js/form/element/checkbox-switch</item>
+                    <item name="valuesForOptions" xsi:type="array">
+                        <item name="catalog_product" xsi:type="string">catalog_product</item>
+                    </item>
+                    <item name="default" xsi:type="number">0</item>
+                    <item name="notice" xsi:type="string">↑ Adds QTY from the file to current product QTY valueY</item>
                 </item>
             </argument>
         </field>
@@ -534,9 +679,49 @@
                         <item name="catalog_product" xsi:type="string">catalog_product</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Products that already exist at the store, but are not in the import list will be disabled after import.
+                        </item>
+                    </item>
                     <item name="notice" xsi:type="string">↑ Disable Products if not in list.</item>
                 </item>
             </argument>
+        </field>
+        <field name="cache_products" sortOrder="175" formElement="checkbox" component="Firebear_ImportExport/js/form/element/checkbox-switch">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="source" xsi:type="string">import</item>
+                    <item name="default" xsi:type="number">0</item>
+                    <item name="dataScope" xsi:type="string">cache_products</item>
+                    <item name="valuesForOptions" xsi:type="array">
+                        <item name="catalog_product" xsi:type="string">catalog_product</item>
+                    </item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Caches product by the row hash. If you add new rows inside the import table, only the new rows will be imported.
+                        </item>
+                    </item>
+                </item>
+            </argument>
+            <settings>
+                <validation>
+                    <rule name="required-entry" xsi:type="boolean">false</rule>
+                </validation>
+                <dataType>boolean</dataType>
+                <label translate="true">Enabled Cache Products</label>
+            </settings>
+            <formElements>
+                <checkbox>
+                    <settings>
+                        <valueMap>
+                            <map name="false" xsi:type="string">0</map>
+                            <map name="true" xsi:type="string">1</map>
+                        </valueMap>
+                        <prefer>toggle</prefer>
+                    </settings>
+                </checkbox>
+            </formElements>
         </field>
         <field name="remove_all_customer_address">
             <argument name="data" xsi:type="array">
@@ -557,6 +742,11 @@
                         <item name="customer_address" xsi:type="string">customer_address</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Clears address association of imported customers if they already exist at the store. Only addresses from the import list will be assigned.
+                        </item>
+                    </item>
                     <item name="notice" xsi:type="string">↑ Remove all address association.</item>
                 </item>
             </argument>
@@ -619,7 +809,7 @@
                     <item name="validation" xsi:type="array">
                         <item name="required-entry" xsi:type="boolean">true</item>
                         <item name="validate-number" xsi:type="boolean">true</item>
-                        <item name="validate-greater-than-zero" xsi:type="boolean">true</item>
+                        <item name="validate-zero-or-greater" xsi:type="boolean">true</item>
                     </item>
                 </item>
             </argument>
@@ -788,6 +978,11 @@
                         <item name="false" xsi:type="number">0</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            If enabled, will look for images inside the selected source according to the path set in the file. If disabled, will look inside Magento 2 root.
+                        </item>
+                    </item>
                 </item>
             </argument>
         </field>
@@ -806,6 +1001,11 @@
                         <item name="false" xsi:type="number">0</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            All mappings you have set in this import job will be disregarded.
+                        </item>
+                    </item>
                 </item>
             </argument>
         </field>
@@ -829,9 +1029,6 @@
                 <item name="collapsible" xsi:type="boolean">true</item>
                 <item name="sortOrder" xsi:type="number">50</item>
                 <item name="visible" xsi:type="boolean">false</item>
-                <item name="valuesForOptions" xsi:type="array">
-                    <item name="catalog_product" xsi:type="string">catalog_product</item>
-                </item>
             </item>
         </argument>
         <field name="translate_from">
@@ -1178,6 +1375,11 @@
                         <item name="required-entry" xsi:type="boolean">false</item>
                     </item>
                     <item name="default" xsi:type="string">en_US</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Defines the reference category for starting all category paths in the import file.
+                        </item>
+                    </item>
                 </item>
             </argument>
         </field>
@@ -1467,6 +1669,11 @@
                         <item name="false" xsi:type="number">0</item>
                     </item>
                     <item name="default" xsi:type="number">0</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Defines if configurable products should be created from only simple products in the import file.
+                        </item>
+                    </item>
                 </item>
             </argument>
         </field>
@@ -1494,6 +1701,11 @@
                     <item name="formElement" xsi:type="string">select</item>
                     <item name="label" xsi:type="string" translate="true">Attribute / column name on file</item>
                     <item name="sortOrder" xsi:type="number">30</item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Column which should be used as a reference for aggregating simple products for configurables.
+                        </item>
+                    </item>
                 </item>
             </argument>
         </field>
@@ -1534,6 +1746,11 @@
                     <item name="validation" xsi:type="array">
                         <item name="required-entry" xsi:type="boolean">true</item>
                         <item name="validate-number" xsi:type="boolean">true</item>
+                    </item>
+                    <item name="tooltip" xsi:type="array">
+                        <item name="description" xsi:type="string" translate="true">
+                            Allows specifying a number of symbols the extension should read considering ‘Configurable Product Condition’.
+                        </item>
                     </item>
                 </item>
             </argument>
@@ -1723,6 +1940,143 @@
                     <item name="visible" xsi:type="boolean">false</item>
                 </item>
             </argument>
+        </field>
+    </fieldset>
+    <fieldset name="email_notification" sortOrder="100">
+        <settings>
+            <collapsible>true</collapsible>
+            <label translate="true">Email Notifications</label>
+        </settings>
+        <field name="email_type" formElement="select">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="source" xsi:type="string">import</item>
+                </item>
+            </argument>
+            <settings>
+                <dataType>text</dataType>
+                <label translate="true">Type</label>
+                <dataScope>email_type</dataScope>
+            </settings>
+            <formElements>
+                <select>
+                    <settings>
+                        <options class="Firebear\ImportExport\Model\Source\Config\EmailType"/>
+                    </settings>
+                </select>
+            </formElements>
+        </field>
+        <field name="template" formElement="select">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="source" xsi:type="string">import</item>
+                </item>
+            </argument>
+            <settings>
+                <dataType>text</dataType>
+                <label translate="true">Template</label>
+                <dataScope>template</dataScope>
+            </settings>
+            <formElements>
+                <select>
+                    <settings>
+                        <options class="Firebear\ImportExport\Model\Source\Config\Template"/>
+                    </settings>
+                </select>
+            </formElements>
+        </field>
+        <field name="receiver" formElement="select">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="source" xsi:type="string">import</item>
+                </item>
+            </argument>
+            <settings>
+                <dataType>text</dataType>
+                <label translate="true">Receiver</label>
+                <dataScope>receiver</dataScope>
+            </settings>
+            <formElements>
+                <select>
+                    <settings>
+                        <options class="Firebear\ImportExport\Model\Source\Config\Receiver"/>
+                    </settings>
+                </select>
+            </formElements>
+        </field>
+        <field name="sender" formElement="select">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="source" xsi:type="string">import</item>
+                </item>
+            </argument>
+            <settings>
+                <dataType>text</dataType>
+                <label translate="true">Sender</label>
+                <dataScope>sender</dataScope>
+            </settings>
+            <formElements>
+                <select>
+                    <settings>
+                        <options class="Magento\Config\Model\Config\Source\Email\Identity"/>
+                    </settings>
+                </select>
+            </formElements>
+        </field>
+        <field name="copy" formElement="input">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="source" xsi:type="string">import</item>
+                </item>
+            </argument>
+            <settings>
+                <dataType>text</dataType>
+                <label translate="true">Copy To</label>
+                <dataScope>copy</dataScope>
+            </settings>
+        </field>
+        <field name="copy_method" formElement="select">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="source" xsi:type="string">import</item>
+                </item>
+            </argument>
+            <settings>
+                <dataType>text</dataType>
+                <label translate="true">Copy Method</label>
+                <dataScope>copy_method</dataScope>
+            </settings>
+            <formElements>
+                <select>
+                    <settings>
+                        <options class="Magento\Config\Model\Config\Source\Email\Method"/>
+                    </settings>
+                </select>
+            </formElements>
+        </field>
+        <field name="is_attach" formElement="checkbox">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="source" xsi:type="string">import</item>
+                    <item name="default" xsi:type="number">0</item>
+                </item>
+            </argument>
+            <settings>
+                <dataType>boolean</dataType>
+                <label translate="true">Attach job log to email</label>
+                <notice translate="true">Works for log files below 10Mb</notice>
+            </settings>
+            <formElements>
+                <checkbox>
+                    <settings>
+                        <valueMap>
+                            <map name="false" xsi:type="number">0</map>
+                            <map name="true" xsi:type="number">1</map>
+                        </valueMap>
+                        <prefer>toggle</prefer>
+                    </settings>
+                </checkbox>
+            </formElements>
         </field>
     </fieldset>
     <modal name="run_import">

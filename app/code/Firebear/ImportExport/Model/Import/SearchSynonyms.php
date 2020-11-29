@@ -47,7 +47,7 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
      * @var string[]
      */
     protected $_availableBehaviors = [
-        Import::BEHAVIOR_APPEND,
+        Import::BEHAVIOR_ADD_UPDATE,
         Import::BEHAVIOR_REPLACE,
         Import::BEHAVIOR_DELETE,
     ];
@@ -95,6 +95,16 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
      * @var array
      */
     private $synonymsGroup = [];
+
+    /**
+     * @var array
+     */
+    private $synonymsGroupIds = [];
+
+    /**
+     * @var array
+     */
+    private $groupIdForReplaceNeedAdd = [];
 
     /**
      * @var array
@@ -174,6 +184,7 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
         foreach ($this->_messageTemplates as $errorCode => $message) {
             $this->getErrorAggregator()->addErrorMessageTemplate($errorCode, $message);
         }
+        $this->initSynonymsGroup();
     }
 
     /**
@@ -186,8 +197,11 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
             /** @var SynonymsInterface $synonym */
             foreach ($synonyms as $synonym) {
                 $groupId = $synonym->getGroupId();
+                $storeId = $synonym->getStoreId();
+                $webSiteId = $synonym->getWebsiteId();
                 $expSynonyms = explode(',', $synonym->getSynonymGroup());
-                $this->synonymsGroup[$synonym->getWebsiteId()][$synonym->getStoreId()][$groupId] = $expSynonyms;
+                $this->synonymsGroup[$webSiteId][$storeId][$groupId] = $expSynonyms;
+                $this->synonymsGroupIds[] = $groupId;
             }
         }
     }
@@ -239,11 +253,35 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
         $this->_validatedRows = null;
         if (Import::BEHAVIOR_DELETE == $this->getBehavior()) {
             $this->delete();
+        } elseif (Import::BEHAVIOR_REPLACE == $this->getBehavior()) {
+            $this->replaceProcess();
         } else {
             $this->save();
         }
 
         return true;
+    }
+
+    /**
+     * start this process if checked behavior replace
+     *
+     * @return $this
+     * @throws LocalizedException
+     */
+    protected function replaceProcess()
+    {
+        if (empty($this->synonymsGroup)) {
+            $this->addLogWriteln(
+                __('Search synonyms can\'t be replaced. Firstly add before replace'),
+                $this->output,
+                'error'
+            );
+        } else {
+            $this->delete();
+            $this->save();
+        }
+
+        return $this;
     }
 
     /**
@@ -266,8 +304,15 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
                     continue;
                 }
 
-                $rowData = $this->prepareRowForDelete($rowData);
-                $idsToDelete = array_merge($idsToDelete, $rowData[SynonymsInterface::GROUP_ID]);
+                if (Import::BEHAVIOR_REPLACE == $this->getBehavior()) {
+                    if (isset($rowData[SynonymsInterface::GROUP_ID])
+                        && $this->isSearchSynonyms($rowData)) {
+                        $idsToDelete[] = $rowData[SynonymsInterface::GROUP_ID];
+                    }
+                } else {
+                    $rowData = $this->prepareRowForDelete($rowData);
+                    $idsToDelete = array_merge($idsToDelete, $rowData[SynonymsInterface::GROUP_ID]);
+                }
             }
         }
         if ($idsToDelete) {
@@ -276,6 +321,9 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
                     $this->resourceModel->getMainTable(),
                     [SynonymsInterface::GROUP_ID . ' IN (?)' => $idsToDelete]
                 );
+                if (Import::BEHAVIOR_REPLACE == $this->getBehavior()) {
+                    $this->groupIdForReplaceNeedAdd = $idsToDelete;
+                }
                 $this->addLogWriteln(
                     __('Deleted: %1 Synonym Groups.', $this->getDeletedItemsCount()),
                     $this->output,
@@ -287,6 +335,22 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
         }
 
         return $this;
+    }
+
+    /**
+     * Check isset group_id from Search Synonyms Ids
+     *
+     * @param array $rowData
+     * @return bool
+     */
+    private function isSearchSynonyms(array $rowData)
+    {
+        $result = false;
+        if (in_array($rowData[SynonymsInterface::GROUP_ID], $this->synonymsGroupIds)) {
+            $result = true;
+        }
+
+        return $result;
     }
 
     /**
@@ -305,6 +369,12 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
                 $this->_processedRowsCount++;
                 $rowData = $this->joinIdenticalyData($rowData);
                 $rowData = $this->customChangeData($rowData);
+
+                if (Import::BEHAVIOR_REPLACE == $this->getBehavior()
+                    && !$this->isDataForReplace($rowData)) {
+                    continue;
+                }
+
                 $rowData = $this->prepareRowData($rowData);
                 if (!$this->validateRow($rowData, $rowNum)) {
                     continue;
@@ -318,18 +388,14 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
                 if ($rowData) {
                     if (!empty($rowData[SynonymsInterface::GROUP_ID])) {
                         $idToUpdate = null;
-                        if (Import::BEHAVIOR_APPEND == $this->getBehavior()) {
-                            $idToUpdate = array_shift($rowData[SynonymsInterface::GROUP_ID]);
-                        }
+                        $idToUpdate = array_shift($rowData[SynonymsInterface::GROUP_ID]);
+                        $idsToDelete = array_merge($idsToDelete, $rowData[SynonymsInterface::GROUP_ID]);
 
-                        if (!empty($rowData[SynonymsInterface::GROUP_ID])) {
-                            $idsToDelete = array_merge($idsToDelete, $rowData[SynonymsInterface::GROUP_ID]);
-                            foreach ($this->synonymsGroup as $websiteId => $websiteSynonyms) {
-                                foreach ($websiteSynonyms as $storeId => $storeSynonyms) {
-                                    foreach ($storeSynonyms as $groupId => $synonyms) {
-                                        if (in_array($groupId, $idsToDelete)) {
-                                            unset($this->synonymsGroup[$websiteId][$storeId][$groupId]);
-                                        }
+                        foreach ($this->synonymsGroup as $websiteId => $websiteSynonyms) {
+                            foreach ($websiteSynonyms as $storeId => $storeSynonyms) {
+                                foreach ($storeSynonyms as $groupId => $synonyms) {
+                                    if (in_array($groupId, $idsToDelete)) {
+                                        unset($this->synonymsGroup[$websiteId][$storeId][$groupId]);
                                     }
                                 }
                             }
@@ -431,16 +497,31 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
             case Import::BEHAVIOR_DELETE:
                 break;
             case Import::BEHAVIOR_REPLACE:
-            case Import::BEHAVIOR_APPEND:
-            case AbstractEntity::getDefaultBehavior():
-                if (empty($rowData[SynonymsInterface::GROUP_ID]) && empty($rowData[SynonymsInterface::SYNONYMS])) {
-                    $eMessage = $this->_messageTemplates[self::ERROR_IDENTIFIERS_IS_EMPTY];
-                    $this->addLogWriteln(__($eMessage) . " " . __('Row:#%1', $rowNumber), $this->output, 'error');
-                    $this->addRowError(self::ERROR_IDENTIFIERS_IS_EMPTY, $rowNumber);
-                }
+            case Import::BEHAVIOR_ADD_UPDATE:
+                $this->validateRowForUpdate($rowData, $rowNumber);
                 break;
         }
         return !$this->getErrorAggregator()->isRowInvalid($rowNumber);
+    }
+
+    /**
+     * Validate row data for update behaviour
+     *
+     * @param array $rowData
+     * @param int $rowNumber
+     * @return void
+     */
+    public function validateRowForUpdate(array $rowData, $rowNumber)
+    {
+        if (empty($rowData[SynonymsInterface::GROUP_ID]) && empty($rowData[SynonymsInterface::SYNONYMS])) {
+            $eMessage = $this->_messageTemplates[self::ERROR_IDENTIFIERS_IS_EMPTY];
+            $this->addLogWriteln(
+                __($eMessage) . " " . __('Row:#%1', $rowNumber),
+                $this->output,
+                'error'
+            );
+            $this->addRowError(self::ERROR_IDENTIFIERS_IS_EMPTY, $rowNumber);
+        }
     }
 
     /**
@@ -456,10 +537,6 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
         $websiteId = $rowData[SynonymsInterface::WEBSITE_ID] ?? null;
         $storeId = $rowData[SynonymsInterface::STORE_ID] ?? null;
         $groupId = $rowData[SynonymsInterface::GROUP_ID] ?? null;
-
-        if ($rowSynonyms) {
-            $this->initSynonymsGroup();
-        }
 
         if ($rowSynonyms && $websiteId && $storeId && !empty($this->synonymsGroup[$websiteId][$storeId])) {
             foreach ($this->synonymsGroup[$websiteId][$storeId] as $groupId => $synonyms) {
@@ -512,7 +589,6 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
     private function prepareRowData(array $rowData)
     {
         if (!empty($rowData[SynonymsInterface::SYNONYMS])) {
-            $this->initSynonymsGroup();
             $expRowSynonyms = explode(',', $rowData[SynonymsInterface::SYNONYMS]);
             $websiteId = $rowData[SynonymsInterface::WEBSITE_ID] ?? null;
             $storeId = $rowData[SynonymsInterface::STORE_ID] ?? null;
@@ -555,7 +631,6 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
                 }
             }
 
-            $rowData[SynonymsInterface::GROUP_ID] = !empty($processedIds) ? $processedIds : null;
             $rowData[SynonymsInterface::SYNONYMS] = implode(',', array_unique($expRowSynonyms));
         }
 
@@ -584,6 +659,22 @@ class SearchSynonyms extends AbstractEntity implements ImportAdapterInterface
         }
 
         return $rowData;
+    }
+
+    /**
+     * Check data for behavior replace
+     *
+     * @param array $rowData
+     * @return bool
+     */
+    private function isDataForReplace(array $rowData)
+    {
+        $result = false;
+        if (in_array($rowData[SynonymsInterface::GROUP_ID], $this->groupIdForReplaceNeedAdd)) {
+            $result = true;
+        }
+
+        return $result;
     }
 
     /**

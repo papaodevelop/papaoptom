@@ -13,10 +13,10 @@ use Firebear\ImportExport\Helper\MediaHelper;
 use Firebear\ImportExport\Logger\Logger;
 use Magento\Catalog\Api\Data\ProductInterface;
 use Magento\CatalogImportExport\Model\Import\Product;
-use Magento\CatalogImportExport\Model\Import\Product\MediaGalleryProcessor as MagentoMediaGalleryProcessor;
 use Magento\CatalogImportExport\Model\Import\Product\SkuProcessor;
 use Magento\CatalogImportExport\Model\Import\Proxy\Product\ResourceModel;
 use Magento\CatalogImportExport\Model\Import\Proxy\Product\ResourceModelFactory;
+use Magento\Framework\App\ProductMetadataInterface;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Adapter\AdapterInterface;
 use Magento\Framework\EntityManager\MetadataPool;
@@ -28,7 +28,8 @@ use function sprintf;
  * Process and saves images during import.
  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
  */
-class MediaVideoGallery extends MagentoMediaGalleryProcessor
+
+class MediaVideoGallery
 {
     /**
      * @var MediaHelper
@@ -105,6 +106,15 @@ class MediaVideoGallery extends MagentoMediaGalleryProcessor
      * @var array
      */
     private $oldSkus;
+    /**
+     * @var ProductMetadataInterface
+     */
+    private $productMetadata;
+
+    /**
+     * @var array
+     */
+    protected $productIdBySkuQueue = [];
 
     /**
      * MediaVideoGallery constructor.
@@ -114,6 +124,7 @@ class MediaVideoGallery extends MagentoMediaGalleryProcessor
      * @param ResourceModelFactory $resourceModelFactory
      * @param ProcessingErrorAggregatorInterface $errorAggregator
      * @param Logger $logger
+     * @param ProductMetadataInterface $productMetadata
      * @param MediaHelper $videoimportexportHelper
      */
     public function __construct(
@@ -123,9 +134,9 @@ class MediaVideoGallery extends MagentoMediaGalleryProcessor
         ResourceModelFactory $resourceModelFactory,
         ProcessingErrorAggregatorInterface $errorAggregator,
         Logger $logger,
+        ProductMetadataInterface $productMetadata,
         MediaHelper $videoimportexportHelper
     ) {
-        parent::__construct($skuProcessor, $metadataPool, $resourceConnection, $resourceModelFactory, $errorAggregator);
         $this->skuProcessor = $skuProcessor;
         $this->metadataPool = $metadataPool;
         $this->connection = $resourceConnection->getConnection();
@@ -133,6 +144,7 @@ class MediaVideoGallery extends MagentoMediaGalleryProcessor
         $this->errorAggregator = $errorAggregator;
         $this->mediaHelper = $videoimportexportHelper;
         $this->logger = $logger;
+        $this->productMetadata = $productMetadata;
     }
 
     /**
@@ -168,20 +180,26 @@ class MediaVideoGallery extends MagentoMediaGalleryProcessor
                 }
             }
         }
-        $oldMediaValues = $this->connection->fetchAssoc(
-            $this->connection->select()->from($this->mediaGalleryTableName, ['value_id', 'value'])
-                ->where('value IN (?)', $imageNames)
-        );
-        $this->connection->insertOnDuplicate($this->mediaGalleryTableName, $multiInsertData);
+
+        $countRows = $this->connection->insertOnDuplicate($this->mediaGalleryTableName, $multiInsertData);
+        $id = $this->connection->lastInsertId($this->mediaGalleryTableName);
         $newMediaSelect = $this->connection->select()->from($this->mediaGalleryTableName, ['value_id', 'value'])
-            ->where('value IN (?)', $imageNames);
-        if (array_keys($oldMediaValues)) {
-            $newMediaSelect->where('value_id NOT IN (?)', array_keys($oldMediaValues));
-        }
+            ->where('value_id >= ?', $id)
+            ->limit($countRows);
+
         $newMediaValues = $this->connection->fetchAssoc($newMediaSelect);
         foreach ($mediaGalleryData as $storeId => $storeMediaGalleryData) {
             $this->processMediaPerStore((int)$storeId, $storeMediaGalleryData, $newMediaValues, $valueToProductId);
         }
+    }
+
+    /**
+     * @return $this
+     */
+    public function resetIdBySku()
+    {
+        $this->productIdBySkuQueue = [];
+        return $this;
     }
 
     /**
@@ -221,15 +239,53 @@ class MediaVideoGallery extends MagentoMediaGalleryProcessor
     }
 
     /**
+     * @param $data
+     * @return array
+     * @throws Exception
+     */
+    public function initDataQueue($data)
+    {
+        if ($this->productIdBySkuQueue) {
+            return $this->productIdBySkuQueue;
+        }
+
+        $this->productIdBySkuQueue = array_column($this->connection->fetchAssoc(
+            $this->connection->select()
+                ->from(
+                    $this->connection->getTableName('catalog_product_entity'),
+                    ['sku', $this->getProductEntityLinkField()]
+                )->where('sku IN (?)', array_unique(array_column($data, 'sku')))
+        ), $this->getProductEntityLinkField(), 'sku');
+
+        return $this->productIdBySkuQueue;
+    }
+
+    /**
+     * @param $sku
+     * @return mixed|null
+     */
+    public function getIdBySku($sku)
+    {
+        return $this->productIdBySkuQueue[$sku] ?? null;
+    }
+
+    /**
      * @param $productSku
      * @return string
      * @throws Exception
      */
     protected function getProductId($productSku)
     {
-        $productId = $this->skuProcessor->getNewSku($productSku)[$this->getProductEntityLinkField()];
-        if (!$productId) {
-            $productId = $this->getOldSkus()[$productSku][$this->getProductEntityLinkField()];
+        if ($this->productIdBySkuQueue) {
+            return $this->productIdBySkuQueue[$productSku] ?? null;
+        }
+
+        if (version_compare($this->productMetadata->getVersion(), '2.2.0', '>=')) {
+            $productSku = mb_strtolower($productSku);
+        }
+        $productId = $this->skuProcessor->getNewSku($productSku)[$this->getProductEntityLinkField()] ?? '';
+        if (!$productId && isset($this->getOldSkus()[$productSku][$this->getProductEntityLinkField()])) {
+            $productId = $this->getOldSkus()[$productSku][$this->getProductEntityLinkField()] ?? '';
         }
         return $productId;
     }
@@ -449,6 +505,7 @@ class MediaVideoGallery extends MagentoMediaGalleryProcessor
             [
                 'label' => 'mgv.label',
                 'disabled' => 'mgv.disabled',
+                'position' => 'mgv.position',
             ]
         )->joinLeft(
             ['mgvv' => $this->mediaGalleryVideoTableName],

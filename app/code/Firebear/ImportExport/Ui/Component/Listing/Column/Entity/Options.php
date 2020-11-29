@@ -6,7 +6,11 @@
 
 namespace Firebear\ImportExport\Ui\Component\Listing\Column\Entity;
 
+use Firebear\ImportExport\Model\ExportFactory;
+use Firebear\ImportExport\Model\ExportJob;
+use Firebear\ImportExport\Ui\Component\Listing\Column\Entity\Export\Options as EntityOptions;
 use Magento\Framework\Data\OptionSourceInterface;
+use Magento\Framework\Registry;
 
 /**
  * Class Options
@@ -14,37 +18,108 @@ use Magento\Framework\Data\OptionSourceInterface;
 class Options implements OptionSourceInterface
 {
     /**
-     * @var \Firebear\ImportExport\Model\ExportFactory
+     * @var array
      */
-    protected $export;
+    public $options = [];
 
     /**
-     * @var \Magento\ImportExport\Model\Source\Export\Entity
+     * @var Registry
      */
-    protected $entity;
+    private $coreRegistry;
 
+    /**
+     * @var EntityOptions
+     */
+    private $entityOptions;
+
+    /**
+     * @var ExportFactory
+     */
+    private $exportFactory;
+
+    /**
+     * Options constructor.
+     * @param Registry $coreRegistry
+     * @param EntityOptions $entityOptions
+     * @param ExportFactory $exportFactory
+     */
     public function __construct(
-        \Firebear\ImportExport\Model\ExportFactory $export,
-        \Firebear\ImportExport\Ui\Component\Listing\Column\Entity\Export\Options $entity
+        Registry $coreRegistry,
+        EntityOptions $entityOptions,
+        ExportFactory $exportFactory
     ) {
-        $this->export = $export;
-        $this->entity = $entity;
+        $this->coreRegistry = $coreRegistry;
+        $this->entityOptions = $entityOptions;
+        $this->exportFactory = $exportFactory;
     }
 
     /**
-     * @var array
-     */
-    protected $options;
-
-    /**
-     * Get options
-     *
-     * @return array
+     * @inheritDoc
      */
     public function toOptionArray()
     {
-        $this->options = [];
+        if (!$this->options) {
+            /** @var ExportJob $exportModel */
+            $exportModel = $this->coreRegistry->registry('export_job');
+            $options[] = [
+                'value' => '',
+                'label' => __('-- Please Select --')
+            ];
+            if ($exportModel instanceof ExportJob) {
+                $entity = $exportModel->getEntity();
+                if ($entity) {
+                    $entityOptions = $this->_loadEntityOptions($entity);
+                    $parseEntityOptions = $entityOptions[$entity] ?? [];
+                    $options = array_merge($options, $parseEntityOptions);
+                }
+            }
+            $this->options = $options;
+        }
+        return $this->options ?? [];
+    }
 
-        return $this->options;
+    public function _loadEntityOptions($entity)
+    {
+        $options = [];
+        foreach ($this->entityOptions->toOptionArray() as $item) {
+            if (isset($item['fields'])) {
+                foreach ($item['fields'] as $entityName => $field) {
+                    if ($entity != $entityName) {
+                        continue;
+                    }
+                    $options = $this->_prepareEntityOptions($item['value']);
+                }
+            } elseif (isset($item['value']) && $entity == $item['value']) {
+                $options = $this->_prepareEntityOptions($entity);
+            }
+        }
+        return $options;
+    }
+
+    /**
+     * @param string $entity
+     * @return array
+     */
+    protected function _prepareEntityOptions($entity)
+    {
+        $options = [];
+        $childs = [];
+        $fields = $this->exportFactory
+            ->create()
+            ->setData(['entity' => $entity])
+            ->getFields();
+
+        foreach ($fields as $field) {
+            if (!isset($field['optgroup-name'])) {
+                $childs[] = ['value' => $field, 'label' => $field];
+            } else {
+                $options[$field['optgroup-name']] = $field['value'];
+            }
+        }
+        if (!isset($options[$entity])) {
+            $options[$entity] = $childs;
+        }
+
+        return $options;
     }
 }

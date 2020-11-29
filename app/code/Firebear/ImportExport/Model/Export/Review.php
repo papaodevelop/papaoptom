@@ -96,7 +96,7 @@ class Review extends AbstractEntity implements EntityInterface
         'nickname',
         'title',
         'detail',
-        'status_id',
+        'status',
         'created_at',
     ];
 
@@ -165,10 +165,13 @@ class Review extends AbstractEntity implements EntityInterface
 
         $collection = $this->_getEntityCollection();
         $this->_prepareEntityCollection($collection);
-        $this->_exportCollectionByPages($collection);
+        $writer = $this->getWriter();
         // create export file
+        $writer->setHeaderCols($this->_getHeaderColumns());
+        $this->_exportCollectionByPages($collection);
+
         return [
-            $this->getWriter()->getContents(),
+            $writer->getContents(),
             $this->_processedEntitiesCount,
             $this->lastEntityId
         ];
@@ -291,6 +294,14 @@ class Review extends AbstractEntity implements EntityInterface
                 }
                 if ($key == 'created_at') {
                     $key = 'main_table.created_at';
+                }
+                if ($key == 'status') {
+                    $key = 'rs.status_code';
+                    $collection->getSelect()->join(
+                        ['rs' => 'review_status'],
+                        'main_table.status_id = rs.status_id',
+                        ['rs.status_code']
+                    );
                 }
                 if (in_array($key, $this->ratingFields)) {
                     $ratingId = array_search($key, $this->ratingFields);
@@ -418,11 +429,11 @@ class Review extends AbstractEntity implements EntityInterface
             if ($field == 'created_at') {
                 $type = 'date';
             }
-            if ($field == 'status_id') {
+            if ($field == 'status') {
                 $type = 'select';
-                $select[] = ['label' => __('Approved'), 'value' => 1];
-                $select[] = ['label' => __('Pending'), 'value' => 2];
-                $select[] = ['label' => __('Not Approved'), 'value' => 3];
+                $select[] = ['label' => __('Approved'), 'value' => 'Approved'];
+                $select[] = ['label' => __('Pending'), 'value' => 'Pending'];
+                $select[] = ['label' => __('Not Approved'), 'value' => 'Not Approved'];
             }
             $options[$this->getEntityTypeCode()][] = [
                 'field' => $field,

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * UrlKeyManagerInterface
  *
@@ -7,6 +8,9 @@
  */
 
 namespace Firebear\ImportExport\Api;
+
+use Exception;
+use Firebear\ImportExport\Model\Import\Product;
 
 /**
  * Interface UrlKeyManagerInterface
@@ -17,15 +21,24 @@ namespace Firebear\ImportExport\Api;
 interface UrlKeyManagerInterface
 {
     /**
+     * Initialize all product url_keys for the SKU so there is no override unless mentioned in url_key
+     * and helps in generation of url_key
+     *
+     * @return $this
+     * @throws Exception
+     */
+    public function initUrlKeys();
+
+    /**
      * @param $sku
      * @param $urlKey
      *
-     * @return mixed
+     * @return $this
      */
     public function addUrlKeys($sku, $urlKey);
 
     /**
-     * @return mixed
+     * @return array
      */
     public function getUrlKeys();
 
@@ -33,7 +46,13 @@ interface UrlKeyManagerInterface
      * @param $sku
      * @param $urlKey
      *
-     * @return mixed
+     * @return bool
      */
     public function isUrlKeyExist($sku, $urlKey);
+
+    /**
+     * @param Product $entity
+     * @return $this
+     */
+    public function setEntity(Product $entity);
 }

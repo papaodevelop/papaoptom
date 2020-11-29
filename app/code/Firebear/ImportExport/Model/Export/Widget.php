@@ -202,10 +202,13 @@ class Widget extends AbstractEntity implements EntityInterface
         $this->initThemeList();
         $collection = $this->_getEntityCollection();
         $this->_prepareEntityCollection($collection);
-        $this->_exportCollectionByPages($collection);
+        $writer = $this->getWriter();
         // create export file
+        $writer->setHeaderCols($this->_getHeaderColumns());
+        $this->_exportCollectionByPages($collection);
+
         return [
-            $this->getWriter()->getContents(),
+            $writer->getContents(),
             $this->_processedEntitiesCount,
             $this->lastEntityId
         ];

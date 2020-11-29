@@ -31,7 +31,11 @@
             <argument name="modifiers" xsi:type="array">
                 <item name="advancedImport" xsi:type="array">
                     <item name="class" xsi:type="string">Firebear\ImportExport\Ui\DataProvider\Import\Job\Form\Modifier\AdvancedImport</item>
-                    <item name="sortOrder" xsi:type="number">200000</item>
+                    <item name="sortOrder" xsi:type="number">10</item>
+                </item>
+                <item name="deferred_images" xsi:type="array">
+                    <item name="class" xsi:type="string">Firebear\ImportExport\Ui\DataProvider\Import\Job\Form\Modifier\DeferredImages</item>
+                    <item name="sortOrder" xsi:type="number">20</item>
                 </item>
             </argument>
         </arguments>

@@ -277,6 +277,7 @@ class Attribute extends AbstractFilter
      */
     protected function _getItemsData()
     {
+
         $selected = !!$this->shopbyRequest->getFilterParam($this);
         if ($selected && !$this->isVisibleWhenSelected()) {
             return [];
@@ -557,6 +558,7 @@ class Attribute extends AbstractFilter
      */
     private function getItemsFromDataBuilder()
     {
+
         $itemsData = $this->itemDataBuilder->build();
         if (count($itemsData) == 1
             && !$this->isOptionReducesResults(

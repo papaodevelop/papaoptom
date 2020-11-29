@@ -201,6 +201,7 @@ class Category extends AbstractEntity implements EntityInterface
         if (!$this->headerColumns) {
             $this->headerColumns = array_merge(
                 [
+                    'entity_id',
                     'name',
                     self::COL_STORE,
                     self::COL_STORE_NAME,
@@ -231,17 +232,20 @@ class Category extends AbstractEntity implements EntityInterface
     protected function getArrEntityCollection()
     {
         $entityCollections = [];
-        $stores = $this->_storeManager->getStores();
-        $store_ids = $this->_parameters['behavior_data']['store_ids'];
-        if (in_array('0', $store_ids)) {
+        $stores = $this->_storeManager->getStores(true);
+        $store_ids = $this->getStoreIdsForFilter();
+
+        if ((empty($store_ids) && empty($this->_parameters['behavior_data']['store_ids']))
+            || (empty($this->_parameters['only_admin']) && in_array('0', $store_ids))
+        ) {
             foreach ($stores as $store) {
-                $entity = $this->_getEntityCollection(true)->setStore($store);
+                $entity = $this->_getEntityCollection()->setStore($store);
                 $entityCollections[$store->getCode()] = $entity;
             }
         } else {
             foreach ($store_ids as $storeId) {
                 $store = $stores[$storeId];
-                $entity = $this->_getEntityCollection(true)->setStore($store);
+                $entity = $this->_getEntityCollection()->setStore($store);
                 $entityCollections[$store->getCode()] = $entity;
             }
         }
@@ -357,11 +361,13 @@ class Category extends AbstractEntity implements EntityInterface
     {
         $newRows = [];
         $firstStoreRows = array_shift($storesRows);
-        foreach ($firstStoreRows as $numRow => $row) {
-            $newRows[] = $row;
-            if (!empty($storesRows)) {
-                foreach ($storesRows as $storeCode => $rows) {
-                    $newRows[] = $storesRows[$storeCode][$numRow];
+        if ($firstStoreRows) {
+            foreach ($firstStoreRows as $numRow => $row) {
+                $newRows[] = $row;
+                if (!empty($storesRows)) {
+                    foreach ($storesRows as $storeCode => $rows) {
+                        $newRows[] = $storesRows[$storeCode][$numRow];
+                    }
                 }
             }
         }

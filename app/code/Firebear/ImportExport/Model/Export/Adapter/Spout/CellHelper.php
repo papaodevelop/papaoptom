@@ -72,7 +72,8 @@ class CellHelper
      */
     public static function isNumeric($value)
     {
-        return false;
+        $valueType = gettype($value);
+        return ($valueType === 'integer' || $valueType === 'double');
     }
 
     /**

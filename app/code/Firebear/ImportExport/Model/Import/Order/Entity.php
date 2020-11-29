@@ -133,7 +133,7 @@ class Entity extends AbstractAdapter
      */
     public function prepareRowData(array $rowData)
     {
-        parent::prepareRowData($rowData);
+        $this->prepareCurrentOrderId($rowData);
         $this->prepareStatus($rowData);
         return (!$this->isEmptyRow($rowData))
             ? $rowData
@@ -148,7 +148,9 @@ class Entity extends AbstractAdapter
      */
     public function isEmptyRow($rowData)
     {
-        return empty($rowData['increment_id']);
+        return empty($rowData['increment_id']) ||
+            (!empty($rowData['increment_id']) &&
+            (!empty($rowData['shipment_track:skus']) || !empty($rowData['creditmemo:skus'])));
     }
 
     /**
@@ -178,8 +180,7 @@ class Entity extends AbstractAdapter
     {
         $toCreate = [];
         $toUpdate = [];
-
-        list($createdAt, $updatedAt) = $this->_prepareDateTime($rowData);
+        $entityRow = [];
 
         $newEntity = false;
         $entityId = $this->_getExistEntityId($rowData);
@@ -190,20 +191,33 @@ class Entity extends AbstractAdapter
             $this->_newEntities[$rowData[self::COLUMN_INCREMENT_ID]] = $entityId;
         }
 
+        $entityRow['entity_id'] = $entityId;
         $this->orderIdsMap[$rowData[self::COLUMN_INCREMENT_ID]] = $entityId;
-        $customerId = null;
-        $customerGroupId = 0;
-        if (isset($rowData[self::COLUMN_CUSTOMER_EMAIL])) {
+
+        if (!empty($rowData['created_at']) || $newEntity) {
+            list($createdAt, $updatedAt) = $this->_prepareDateTime($rowData);
+            $entityRow['created_at'] = $createdAt;
+            $entityRow['updated_at'] = $updatedAt;
+        }
+
+        if (!empty($rowData[self::COLUMN_CUSTOMER_EMAIL])) {
+            $customerId = null;
+            $customerGroupId = 0;
             $customerId = $this->getCustomerId(
                 $rowData[self::COLUMN_CUSTOMER_EMAIL],
                 $rowData[self::COLUMN_STORE_ID] ?? 0
             );
+
             if ($customerId) {
                 $customerGroupId = $this->getCustomerGroupId($customerId);
             }
+
+            $entityRow['customer_id'] = $customerId;
+            $entityRow['customer_group_id'] = $customerGroupId;
+            $entityRow['customer_is_guest'] = $customerId ? 0 : 1;
         }
 
-        if (!isset($rowData['base_to_order_rate']) || $rowData['base_to_order_rate'] == 1) {
+        if ($newEntity && (!isset($rowData['base_to_order_rate']) || $rowData['base_to_order_rate'] == 1)) {
             foreach ($this->_baseFields as $field) {
                 if (isset($rowData[$field]) && !isset($rowData['base_' . $field])) {
                     $rowData['base_' . $field] = $rowData[$field];
@@ -230,7 +244,7 @@ class Entity extends AbstractAdapter
             }
         }
 
-        if (empty($rowData['tax_amount'])) {
+        if ($newEntity && empty($rowData['tax_amount'])) {
             if (!empty($rowData['subtotal'])) {
                 $rowData['subtotal_incl_tax'] = $rowData['subtotal'];
             }
@@ -242,15 +256,10 @@ class Entity extends AbstractAdapter
             }
         }
 
-        $entityRow = [
-            'created_at' => $createdAt,
-            'updated_at' => $updatedAt,
-            'is_virtual' => empty($rowData['is_virtual']) ? 0 : 1,
-            'customer_id' => $customerId,
-            'customer_group_id' => $customerGroupId,
-            'customer_is_guest' => $customerId ? 0 : 1,
-            'entity_id' => $entityId
-        ];
+        if (isset($rowData['is_virtual'])) {
+            $entityRow['is_virtual'] = empty($rowData['is_virtual']) ? 0 : 1;
+        }
+
         /* prepare data */
         $entityRow = $this->_prepareEntityRow($entityRow, $rowData);
         if ($newEntity) {

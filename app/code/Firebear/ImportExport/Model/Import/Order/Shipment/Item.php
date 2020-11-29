@@ -20,6 +20,12 @@ class Item extends AbstractAdapter
     const ENTITY_TYPE_CODE = 'order';
 
     /**
+     * Prefix of Fields
+     *
+     */
+    const PREFIX = 'shipment_item';
+
+    /**
      * Entity Id Column Name
      *
      */
@@ -94,11 +100,11 @@ class Item extends AbstractAdapter
      */
     public function prepareRowData(array $rowData)
     {
-        parent::prepareRowData($rowData);
+        $this->prepareCurrentOrderId($rowData);
         if (!empty($rowData[self::COLUMN_SHIPMENT_INCREMENT_ID])) {
             $this->_currentShipmentId = $rowData[self::COLUMN_SHIPMENT_INCREMENT_ID];
         }
-        $rowData = $this->_extractField($rowData, 'shipment_item');
+        $rowData = $this->_extractField($rowData, static::PREFIX);
         return (count($rowData) && !$this->isEmptyRow($rowData))
             ? $rowData
             : false;

@@ -20,6 +20,12 @@ class Transaction extends AbstractAdapter
     const ENTITY_TYPE_CODE = 'order';
 
     /**
+     * Prefix of Fields
+     *
+     */
+    const PREFIX = 'transaction';
+
+    /**
      * Entity Id Column Name
      *
      */
@@ -107,8 +113,8 @@ class Transaction extends AbstractAdapter
      */
     public function prepareRowData(array $rowData)
     {
-        parent::prepareRowData($rowData);
-        $rowData = $this->_extractField($rowData, 'transaction');
+        $this->prepareCurrentOrderId($rowData);
+        $rowData = $this->_extractField($rowData, static::PREFIX);
         if (!empty($rowData['additional_information'])) {
             $isJson = json_decode($rowData['additional_information']);
             if (json_last_error() != JSON_ERROR_NONE) {

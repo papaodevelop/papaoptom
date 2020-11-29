@@ -54,6 +54,7 @@ class Product extends \Magento\CatalogImportExport\Model\Export\Product implemen
     use ExportTrait;
 
     const CACHE_TAG = 'config_scopes';
+    const COL_CATEGORY_IDS = 'category_ids';
 
     /**
      * @var array
@@ -649,6 +650,7 @@ class Product extends \Magento\CatalogImportExport\Model\Export\Product implemen
         $data['rowWebsites'] = $rowWebsites;
         $data['rowCategories'] = $rowCategories;
         $data['rowCategoriesPosition'] = $rowCategoriesPosition;
+        $data['rowCategoryIds'] = $rowCategories;
 
         $data['linksRows'] = $this->prepareLinks($productLinkIds);
 
@@ -964,6 +966,7 @@ class Product extends \Magento\CatalogImportExport\Model\Export\Product implemen
                     self::COL_TYPE,
                     self::COL_CATEGORY,
                     self::COL_CATEGORY . '_position',
+                    self::COL_CATEGORY_IDS,
                     self::COL_PRODUCT_WEBSITES,
                 ],
                 $this->_getExportMainAttrCodes(),
@@ -1268,6 +1271,8 @@ class Product extends \Magento\CatalogImportExport\Model\Export\Product implemen
 
         $this->updateDataWithCategoryColumns($dataRow, $multiRawData['rowCategories'], $pId);
         $this->updateDataWithCategoryPositionColumns($dataRow, $multiRawData['rowCategoriesPosition'], $pId);
+        $this->updateDataWithCategoryIdsColumns($dataRow, $multiRawData['rowCategoryIds'], $pId);
+
         if (!empty($multiRawData['rowWebsites'][$pId])) {
             $websiteCodes = [];
             foreach ($multiRawData['rowWebsites'][$pId] as $productWebsite) {
@@ -1412,6 +1417,9 @@ class Product extends \Magento\CatalogImportExport\Model\Export\Product implemen
         }
         $categories = [];
         foreach ($rowCategories[$productId] as $categoryId) {
+            if (!isset($this->_rootCategories[$categoryId])) {
+                continue;
+            }
             $categoryPath = $this->_rootCategories[$categoryId];
             if (isset($this->_categories[$categoryId])) {
                 $categoryPath .= '/' . $this->_categories[$categoryId];
@@ -1437,6 +1445,9 @@ class Product extends \Magento\CatalogImportExport\Model\Export\Product implemen
         }
         $positions = [];
         foreach ($rowCategoriesPosition[$productId] as $categoryId => $position) {
+            if (!isset($this->_rootCategories[$categoryId])) {
+                continue;
+            }
             $categoryPath = $this->_rootCategories[$categoryId];
             if (isset($this->_categories[$categoryId])) {
                 $categoryPath .= '/' . $this->_categories[$categoryId];
@@ -1445,6 +1456,31 @@ class Product extends \Magento\CatalogImportExport\Model\Export\Product implemen
         }
         $dataRow[self::COL_CATEGORY . '_position'] = implode($this->multipleValueSeparator, $positions);
         unset($rowCategoriesPosition[$productId]);
+
+        return true;
+    }
+
+    /**
+     * @param $dataRow
+     * @param $rowCategoryIds
+     * @param $productId
+     * @return bool
+     */
+    protected function updateDataWithCategoryIdsColumns(&$dataRow, &$rowCategoryIds, $productId)
+    {
+        if (!isset($rowCategoryIds[$productId])) {
+            return false;
+        }
+
+        $category_ids = [];
+        foreach ($rowCategoryIds[$productId] as $categoryId) {
+            if (isset($this->_categories[$categoryId])) {
+                $category_ids[] = $categoryId;
+            }
+        }
+
+        $dataRow[self::COL_CATEGORY_IDS] = implode($this->multipleValueSeparator, $category_ids);
+        unset($rowCategoryIds[$productId]);
 
         return true;
     }
@@ -1569,6 +1605,8 @@ class Product extends \Magento\CatalogImportExport\Model\Export\Product implemen
         $this->setHeaderColumns(1, $stockItemRows);
         $this->_headerColumns = $this->rowCustomizer->addHeaderColumns($this->_headerColumns);
         $this->_headerColumns = array_merge($this->_headerColumns, [self::COL_CATEGORY . '_position']);
+        $this->_headerColumns = array_merge($this->_headerColumns, [self::COL_CATEGORY_IDS]);
+
         $subOptions = [];
         if (isset($this->_attributeColFactory)) {
             $attributeCollection = $this->_attributeColFactory->create()->addVisibleFilter()
@@ -1579,6 +1617,7 @@ class Product extends \Magento\CatalogImportExport\Model\Export\Product implemen
             }
             $this->_headerColumns = array_merge($this->_headerColumns, $subOptions);
         }
+
         sort($this->_headerColumns);
         return array_unique($this->_headerColumns);
     }

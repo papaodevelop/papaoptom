@@ -140,7 +140,7 @@ define(
                         }
                     }
                     postData = this.recorrectData(postData);
-                    postData = this.recorrectMapData(postData);
+                    // postData = this.recorrectMapData(postData);
                     $.ajax({
                         type: "POST",
                         url: this.source.submit_url,
@@ -214,7 +214,7 @@ define(
                             });
                             list[index] = listSecond;
                         });
-                    
+
                         if (_.size(list) > 0) {
                             if (_.size(data.source_data_export)) {
                                 data.source_data_export.delete = [];
@@ -234,12 +234,12 @@ define(
                             }
                         };
                     }
-                
+
                     return data;
                 },
                 submit: function (redirect) {
                     var self = this;
-                    
+
                     var type = reg.get(self.ns + "." + self.ns + ".source.import_source");
                     if (typeof type != 'undefined') {
                         if (type.value() == 'google') {

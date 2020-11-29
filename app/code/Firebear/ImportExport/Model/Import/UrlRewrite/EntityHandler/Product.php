@@ -53,6 +53,7 @@ class Product extends AbstractEntityHandler implements EntityHandlerInterface
      */
     const ERROR_SKU_NOT_FOUND = 'urlRewriteSkuNotFound';
     const ERROR_URL_REWRITE_ID_IS_EMPTY = 'urlRewriteIdIsEmpty';
+    const ERROR_ERROR_ENTITY_NOT_FOUND = 'urlRewriteEntityNotFound';
 
     /**
      * Validation failure message template definitions
@@ -62,6 +63,7 @@ class Product extends AbstractEntityHandler implements EntityHandlerInterface
     protected $_messageTemplates = [
         self::ERROR_SKU_NOT_FOUND => 'Product with specified SKU not found',
         self::ERROR_URL_REWRITE_ID_IS_EMPTY => 'Url rewrite id is empty',
+        self::ERROR_ERROR_ENTITY_NOT_FOUND => 'Product with specified entity id not found',
     ];
 
     /**
@@ -117,6 +119,10 @@ class Product extends AbstractEntityHandler implements EntityHandlerInterface
             $entityId = $this->_product->getIdBySku($rowData[self::COLUMN_SKU]);
             if (!$entityId) {
                 $this->addRowError(self::ERROR_SKU_NOT_FOUND, $rowNumber);
+            }
+        } elseif (!empty($rowData[self::COLUMN_ENTITY_ID])) {
+            if (!$this->_product->isProductsHasSku([$rowData[self::COLUMN_ENTITY_ID]])) {
+                $this->addRowError(self::ERROR_ERROR_ENTITY_NOT_FOUND, $rowNumber);
             }
         } elseif (empty($rowData[self::COLUMN_URL_REWRITE_ID])) {
             $this->addRowError(self::ERROR_URL_REWRITE_ID_IS_EMPTY, $rowNumber);

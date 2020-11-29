@@ -277,6 +277,7 @@ class Category extends \Magento\Catalog\Model\Layer\Filter\AbstractFilter
      */
     protected function _getItemsData()
     {
+        echo 'dddddd';die();
         $optionsFacetedData = $this->getFacetedData();
         $category = $this->dataProvider->getCategory();
         $categories = $category->getChildrenCategories();

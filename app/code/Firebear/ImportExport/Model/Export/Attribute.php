@@ -14,6 +14,10 @@ use Firebear\ImportExport\Model\ExportJob\Processor;
 use Firebear\ImportExport\Model\Import\Attribute as ImportAttribute;
 use Firebear\ImportExport\Model\Source\Factory as SourceFactory;
 use Firebear\ImportExport\Traits\Export\Entity as ExportTrait;
+use Magento\Eav\Model\Config as EavConfig;
+use Magento\Eav\Model\Entity\Attribute as EntityAttributeModel;
+use Magento\Eav\Model\ResourceModel\Entity\Attribute as EntityAttributeResourceModel;
+use Magento\Eav\Model\ResourceModel\Entity\Attribute\Collection as EntityAttributeCollection;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Adapter\AdapterInterface;
@@ -22,13 +26,9 @@ use Magento\Framework\Model\ResourceModel\Db\Collection\AbstractCollection;
 use Magento\ImportExport\Model\Export\AbstractEntity;
 use Magento\ImportExport\Model\Export\Factory as ExportFactory;
 use Magento\ImportExport\Model\ResourceModel\CollectionByPagesIteratorFactory;
-use Magento\Eav\Model\Config as EavConfig;
-use Magento\Eav\Model\Entity\Attribute as EntityAttributeModel;
-use Magento\Eav\Model\ResourceModel\Entity\Attribute as EntityAttributeResourceModel;
-use Magento\Eav\Model\ResourceModel\Entity\Attribute\Collection as EntityAttributeCollection;
 use Magento\Store\Model\StoreManagerInterface;
-use Symfony\Component\Console\Output\ConsoleOutput;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Console\Output\ConsoleOutput;
 
 /**
  * Attribute export adapter
@@ -116,6 +116,17 @@ class Attribute extends AbstractEntity implements EntityInterface
      * @var
      */
     protected $filterStoreIdValue;
+
+    /**
+     * $_cachedOptionData[$attributeID][$storeId] = []
+     * @var array
+     */
+    protected $_cachedOptionData = [];
+
+    /**
+     * @var array
+     */
+    protected $_cachedSetsData = [];
 
     /**
      * Initialize export
@@ -256,6 +267,11 @@ class Attribute extends AbstractEntity implements EntityInterface
         $itemExported = false;
         foreach ($this->_getExportData($item) as $storeRow) {
             foreach ($storeRow as $row) {
+                $this->addLogWriteln(
+                    __('Export %1 for attributeSet %2 of storeID %3', $row['attribute_code'], $row['attribute_set'], $row['store_id']),
+                    $this->getOutput(),
+                    'info'
+                );
                 $row = $this->changeRow($row);
                 $this->getWriter()->writeRow($row);
                 $itemExported = true;
@@ -280,95 +296,102 @@ class Attribute extends AbstractEntity implements EntityInterface
         $code = $attribute->getAttributeCode();
         $this->lastEntityId = $attributeId;
 
-        $setData = $this->_getSetData($attributeId) ?: null;
-        $row = [
-            'store_id' => 0,
-            'entity_type' => 'product',
-            'attribute_set' => $setData['attribute_set_name'] ?? null,
-            'group:name' => $setData['attribute_group_name'] ?? null,
-            'group:sort_order' => $setData['sort_order'] ?? null,
-        ];
-        $row = array_merge($row, $attribute->toArray());
-        unset(
-            $row['attribute_id'],
-            $row['entity_type_id']
-        );
-        $row['option:base_value'] = '';
-        $row['option:value'] = '';
-        $row['option:sort_order'] = '';
-        $row['option:swatch_value'] = '';
+        $setsData = $this->_getSetData($attributeId) ?: [];
+        foreach ($setsData as $setData) {
+            $row = [
+                'store_id' => 0,
+                'entity_type' => 'product',
+                'attribute_set' => $setData['attribute_set_name'] ?? null,
+                'group:name' => $setData['attribute_group_name'] ?? null,
+                'group:sort_order' => $setData['sort_order'] ?? null,
+            ];
+            $row = array_merge($row, $attribute->toArray());
+            unset(
+                $row['attribute_id'],
+                $row['entity_type_id']
+            );
+            $row['option:base_value'] = '';
+            $row['option:value'] = '';
+            $row['option:sort_order'] = '';
+            $row['option:swatch_value'] = '';
 
-        $exportData = [0 => $row];
-        $pattern = array_fill_keys(array_keys($row), '');
-        unset($row);
+            $exportData = [0 => $row];
+            $pattern = array_fill_keys(array_keys($row), '');
+            unset($row);
 
-        $labels = $this->_getStoreLabels($attributeId);
-        foreach ($labels as $storeId => $label) {
-            $new = $pattern;
-            $new['attribute_set'] = $setData['attribute_set_name'] ?? null;
-            $new['attribute_code'] = $code;
-            $new['store_id'] = $storeId;
-            $new['frontend_label'] = $label;
-            if ($filterStoreIdValue === null) {
-                $exportData[$storeId] = $new;
-            } else {
-                if ($storeId == $filterStoreIdValue) {
+            $labels = $this->_getStoreLabels($attributeId);
+            foreach ($labels as $storeId => $label) {
+                $new = $pattern;
+                $new['attribute_set'] = $setData['attribute_set_name'] ?? null;
+                $new['attribute_code'] = $code;
+                $new['store_id'] = $storeId;
+                $new['frontend_label'] = $label;
+                if ($filterStoreIdValue === null) {
                     $exportData[$storeId] = $new;
+                } else {
+                    if ($storeId == $filterStoreIdValue) {
+                        $exportData[$storeId] = $new;
+                    }
                 }
             }
-        }
 
-        ksort($exportData);
-        $baseValue = [];
-        foreach ($exportData as $exportStoreId => $row) {
-            foreach ($this->_storeIdToCode as $storeId => $storeCode) {
-                if ($exportStoreId != $storeId && isset($exportData[$storeId])) {
-                    continue;
-                }
-                $options = $this->_getOptionData($attributeId, $storeId);
-                if (0 < count($options)) {
-                    $first = true;
-                    foreach ($options as $option) {
-                        $new = $first ? $row : $pattern;
-                        $first = false;
+            ksort($exportData);
+            $baseValue = [];
+            foreach ($exportData as $exportStoreId => $row) {
+                foreach ($this->_storeIdToCode as $storeId => $storeCode) {
+                    if ($exportStoreId != $storeId && isset($exportData[$storeId])) {
+                        continue;
+                    }
+                    $options = $this->_getOptionData($attributeId, $storeId);
+                    if (0 < count($options)) {
+                        $first = true;
+                        foreach ($options as $option) {
+                            $new = $first ? $row : $pattern;
+                            $first = false;
 
-                        $optionId = (int)$option['option_id'];
+                            $optionId = (int)$option['option_id'];
 
-                        if (!isset($exportData[$storeId])) {
-                            $new = $pattern;
+                            if (!isset($exportData[$storeId])) {
+                                $new = $pattern;
+                            }
+
+                            if (0 == $storeId) {
+                                $baseValue[$optionId] = $option['value'];
+                            }
+                            $new['attribute_set'] = $setData['attribute_set_name'] ?? null;
+                            $new['attribute_code'] = $code;
+                            $new['store_id'] = $storeId;
+                            $new['option:base_value'] = ($storeId && isset($baseValue[$optionId])) ?
+                                $baseValue[$optionId] :
+                                '';
+                            $new['option:value'] = $option['value'];
+                            if ((isset($option['swatch_value']))) {
+                                $new['option:swatch_value'] = $option['swatch_value'];
+                            } else {
+                                $new['option:swatch_value'] = null;
+                            }
+                            $new['option:sort_order'] = $option['sort_order'];
+                            if ($filterStoreIdValue === null) {
+                                $this->_exportData[$storeId][] = $new;
+                            } else {
+                                if ($storeId == $filterStoreIdValue) {
+                                    $this->_exportData[$storeId][] = $new;
+                                }
+                            }
                         }
-
-                        if (0 == $storeId) {
-                            $baseValue[$optionId] = $option['value'];
-                        }
-                        $new['attribute_set'] = $setData['attribute_set_name'] ?? null;
-                        $new['attribute_code'] = $code;
-                        $new['store_id'] = $storeId;
-                        $new['option:base_value'] = ($storeId && isset($baseValue[$optionId])) ?
-                            $baseValue[$optionId] :
-                            '';
-                        $new['option:value'] = $option['value'];
-                        $new['option:swatch_value'] = (isset($option['swatch_value'])) ? $option['swatch_value'] : null;
-                        $new['option:sort_order'] = $option['sort_order'];
+                    } elseif ($exportStoreId == $storeId) {
                         if ($filterStoreIdValue === null) {
-                            $this->_exportData[$storeId][$optionId] = $new;
+                            $this->_exportData[$storeId][] = $row;
                         } else {
                             if ($storeId == $filterStoreIdValue) {
-                                $this->_exportData[$storeId][$optionId] = $new;
+                                $this->_exportData[$storeId][] = $row;
                             }
                         }
                     }
-                } elseif ($exportStoreId == $storeId) {
-                    if ($filterStoreIdValue === null) {
-                        $this->_exportData[$storeId][0] = $row;
-                    } else {
-                        if ($storeId == $filterStoreIdValue) {
-                            $this->_exportData[$storeId][0] = $row;
-                        }
-                    }
                 }
             }
         }
+
         return $this->_exportData;
     }
 
@@ -380,34 +403,38 @@ class Attribute extends AbstractEntity implements EntityInterface
      */
     protected function _getSetData($attributeId)
     {
-        $resource = $this->_resourceModel;
-        $table = $resource->getTableName('eav_entity_attribute');
-        $setTable = $resource->getTableName('eav_attribute_set');
-        $groupTable = $resource->getTableName('eav_attribute_group');
+        if (!isset($this->_cachedSetsData[$attributeId])) {
+            $resource = $this->_resourceModel;
+            $table = $resource->getTableName('eav_entity_attribute');
+            $setTable = $resource->getTableName('eav_attribute_set');
+            $groupTable = $resource->getTableName('eav_attribute_group');
 
-        $select = $this->_connection->select();
-        $select->from(
-            ['e' => $table],
-            []
-        )->join(
-            ['s' => $setTable],
-            'e.attribute_set_id = s.attribute_set_id',
-            ['s.attribute_set_name']
-        )->join(
-            ['g' => $groupTable],
-            'e.attribute_group_id = g.attribute_group_id',
-            ['g.attribute_group_name', 'g.attribute_group_code', 'g.tab_group_code', 'g.sort_order']
-        )->where(
-            'e.attribute_id = ?',
-            $attributeId
-        );
-        if (!empty($this->attributeSetNameFilter)) {
-            $select->where(
-                's.attribute_set_name = ?',
-                $this->attributeSetNameFilter
+            $select = $this->_connection->select();
+            $select->from(
+                ['e' => $table],
+                []
+            )->join(
+                ['s' => $setTable],
+                'e.attribute_set_id = s.attribute_set_id',
+                ['s.attribute_set_name']
+            )->join(
+                ['g' => $groupTable],
+                'e.attribute_group_id = g.attribute_group_id',
+                ['g.attribute_group_name', 'g.attribute_group_code', 'g.tab_group_code', 'g.sort_order']
+            )->where(
+                'e.attribute_id = ?',
+                $attributeId
             );
+            if (!empty($this->attributeSetNameFilter)) {
+                $select->where(
+                    's.attribute_set_name = ?',
+                    $this->attributeSetNameFilter
+                );
+            }
+            $this->_cachedSetsData[$attributeId] = $this->_connection->fetchAll($select);
         }
-        return $this->_connection->fetchRow($select);
+
+        return $this->_cachedSetsData[$attributeId];
     }
 
     /**
@@ -419,35 +446,37 @@ class Attribute extends AbstractEntity implements EntityInterface
      */
     protected function _getOptionData($attributeId, $storeId)
     {
-        $resource = $this->_resourceModel;
-        $optionTable = $resource->getTableName('eav_attribute_option');
-        $optionValueTable = $resource->getTableName('eav_attribute_option_value');
-        $swatchValueTable = $resource->getTableName('eav_attribute_option_swatch');
+        if (!isset($this->_cachedOptionData[$attributeId][$storeId])) {
+            $resource = $this->_resourceModel;
+            $optionTable = $resource->getTableName('eav_attribute_option');
+            $optionValueTable = $resource->getTableName('eav_attribute_option_value');
+            $swatchValueTable = $resource->getTableName('eav_attribute_option_swatch');
 
-        $select = $this->_connection->select();
-        $select->from(
-            ['o' => $optionTable],
-            ['o.option_id', 'o.sort_order']
-        )->join(
-            ['v' => $optionValueTable],
-            'o.option_id = v.option_id',
-            ['v.value']
-        )->joinLeft(
-            ['s' => $swatchValueTable],
-            sprintf(
-                'o.option_id = s.option_id and s.store_id = %d',
+            $select = $this->_connection->select();
+            $select->from(
+                ['o' => $optionTable],
+                ['o.option_id', 'o.sort_order']
+            )->join(
+                ['v' => $optionValueTable],
+                'o.option_id = v.option_id',
+                ['v.value']
+            )->joinLeft(
+                ['s' => $swatchValueTable],
+                sprintf(
+                    'o.option_id = s.option_id and s.store_id = %d',
+                    $storeId
+                ),
+                ['swatch_value' => 's.value']
+            )->where(
+                'o.attribute_id = ?',
+                $attributeId
+            )->where(
+                'v.store_id = ?',
                 $storeId
-            ),
-            ['swatch_value' => 's.value']
-        )->where(
-            'o.attribute_id = ?',
-            $attributeId
-        )->where(
-            'v.store_id = ?',
-            $storeId
-        )->order('o.sort_order');
-
-        return $this->_connection->fetchAll($select);
+            )->order('o.sort_order');
+            $this->_cachedOptionData[$attributeId][$storeId] = $this->_connection->fetchAll($select);
+        }
+        return $this->_cachedOptionData[$attributeId][$storeId];
     }
 
     /**

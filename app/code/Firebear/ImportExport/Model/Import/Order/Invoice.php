@@ -19,6 +19,12 @@ class Invoice extends AbstractAdapter
     const ENTITY_TYPE_CODE = 'order';
 
     /**
+     * Prefix of Fields
+     *
+     */
+    const PREFIX = 'invoice';
+
+    /**
      * Entity Id Column Name
      *
      */
@@ -87,8 +93,8 @@ class Invoice extends AbstractAdapter
      */
     public function prepareRowData(array $rowData)
     {
-        parent::prepareRowData($rowData);
-        $rowData = $this->_extractField($rowData, 'invoice');
+        $this->prepareCurrentOrderId($rowData);
+        $rowData = $this->_extractField($rowData, static::PREFIX);
         return (count($rowData) && !$this->isEmptyRow($rowData))
             ? $rowData
             : false;
@@ -181,7 +187,7 @@ class Invoice extends AbstractAdapter
             foreach ($this->_baseFields as $field) {
                 if (isset($rowData[$field]) && !isset($rowData['base_' . $field])) {
                     $rowData['base_' . $field] = $rowData[$field];
-                } else {
+                } elseif (!isset($rowData[$field])) {
                     // set default values
                     $rowData[$field] = $rowData['base_' . $field] = 0;
                 }

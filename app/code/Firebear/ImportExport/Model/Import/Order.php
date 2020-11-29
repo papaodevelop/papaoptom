@@ -13,6 +13,7 @@ use Firebear\ImportExport\Model\Import\Order\Creditmemo;
 use Firebear\ImportExport\Model\Import\Order\Creditmemo\Comment;
 use Firebear\ImportExport\Model\Import\Order\Creditmemo\CommentFactory as CreditmemoCommentFactory;
 use Firebear\ImportExport\Model\Import\Order\Creditmemo\ItemFactory as CreditmemoItemFactory;
+use Firebear\ImportExport\Model\Import\Order\Creditmemo\GeneratorFactory as CreditmemoGeneratorFactory;
 use Firebear\ImportExport\Model\Import\Order\CreditmemoFactory;
 use Firebear\ImportExport\Model\Import\Order\DataProcessor;
 use Firebear\ImportExport\Model\Import\Order\Entity;
@@ -166,6 +167,13 @@ class Order extends AbstractEntity implements ImportAdapterInterface
     protected $_creditmemoComment;
 
     /**
+     * Creditmemo Comment Generator
+     *
+     * @var Comment
+     */
+    protected $_creditmemoGenerator;
+
+    /**
      * Tax Entity Adapter
      *
      * @var Tax
@@ -223,6 +231,7 @@ class Order extends AbstractEntity implements ImportAdapterInterface
      * @param CreditmemoFactory $creditmemoFactory
      * @param CreditmemoItemFactory $creditmemoItemFactory
      * @param CreditmemoCommentFactory $creditmemoCommentFactory
+     * @param CreditmemoGeneratorFactory $creditmemoGeneratorFactory
      * @param TaxFactory $taxFactory
      * @param TaxItemFactory $taxItemFactory
      * @param StatusHistoryFactory $statusHistory
@@ -249,6 +258,7 @@ class Order extends AbstractEntity implements ImportAdapterInterface
         CreditmemoFactory $creditmemoFactory,
         CreditmemoItemFactory $creditmemoItemFactory,
         CreditmemoCommentFactory $creditmemoCommentFactory,
+        CreditmemoGeneratorFactory $creditmemoGeneratorFactory,
         TaxFactory $taxFactory,
         TaxItemFactory $taxItemFactory,
         StatusHistoryFactory $statusHistory,
@@ -273,6 +283,7 @@ class Order extends AbstractEntity implements ImportAdapterInterface
         $this->_creditmemo = $creditmemoFactory->create();
         $this->_creditmemoItem = $creditmemoItemFactory->create();
         $this->_creditmemoComment = $creditmemoCommentFactory->create();
+        $this->_creditmemoGenerator = $creditmemoGeneratorFactory->create();
         $this->_tax = $taxFactory->create();
         $this->_taxItem = $taxItemFactory->create();
         $this->_statusHistory = $statusHistory->create();
@@ -301,7 +312,11 @@ class Order extends AbstractEntity implements ImportAdapterInterface
      */
     public function getAllFields()
     {
-        return $this->_order->getAllFields();
+        $fields = [];
+        foreach ($this->getChildren() as $adapter) {
+            $fields = array_merge($fields, $adapter->getAllFields());
+        }
+        return $fields;
     }
 
     /**
@@ -327,6 +342,7 @@ class Order extends AbstractEntity implements ImportAdapterInterface
             $this->_creditmemo,
             $this->_creditmemoItem,
             $this->_creditmemoComment,
+            $this->_creditmemoGenerator,
             $this->_tax,
             $this->_taxItem,
             $this->_statusHistory
@@ -356,9 +372,9 @@ class Order extends AbstractEntity implements ImportAdapterInterface
                 $this->_importTax($orderIds, $orderItemIds);
                 $this->_importStatusHistory($orderIds);
                 /* refresh grid and grid archive(ee) */
-                foreach ($orderIds as $orderId) {
+                foreach ($orderIds as $incrementId => $orderId) {
                     $this->_gridPool->refreshByOrderId($orderId);
-                    $this->addLogWriteln(__('order with order id: %1', $orderId), $this->getOutput(), 'info');
+                    $this->addLogWriteln(__('order with order id: %1', $incrementId), $this->getOutput(), 'info');
                 }
             }
             $this->_connection->commit();
@@ -699,6 +715,8 @@ class Order extends AbstractEntity implements ImportAdapterInterface
         $this->_creditmemoComment
             ->setCreditmemoIdsMap($creditmemoIds)
             ->importData();
+        /* creditmemo generator */
+        $this->_creditmemoGenerator->importData();
     }
 
     /**

@@ -74,7 +74,7 @@ class Sequence implements PostJobInterface
 
         $this->connector->getDestinationChannel()->query('SET FOREIGN_KEY_CHECKS = 0;');
         $this->connector->getDestinationChannel()->insertOnDuplicate(
-            $this->config->getM1Prefix() . $this->sequenceTable,
+            $this->config->getM2Prefix() . $this->sequenceTable,
             $ids
         );
         $this->connector->getDestinationChannel()->query('SET FOREIGN_KEY_CHECKS = 1;');

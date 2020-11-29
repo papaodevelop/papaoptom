@@ -7,6 +7,7 @@
 namespace Firebear\ImportExport\Cron;
 
 use Firebear\ImportExport\Model\ExportJob\Processor;
+use Firebear\ImportExport\Model\Email\Sender;
 
 /**
  * Class RunExportJobs
@@ -26,16 +27,26 @@ class RunExportJobs
     protected $helper;
 
     /**
+     * Email sender
+     *
+     * @var Sender
+     */
+    protected $sender;
+
+    /**
      * RunExportJobs constructor.
      *
      * @param Processor $exportProcessor
+     * @param Sender $sender
      */
     public function __construct(
         Processor $exportProcessor,
-        \Firebear\ImportExport\Helper\Data $helper
+        \Firebear\ImportExport\Helper\Data $helper,
+        Sender $sender
     ) {
         $this->helper = $helper;
         $this->processor = $exportProcessor;
+        $this->sender = $sender;
     }
 
     /**
@@ -54,9 +65,14 @@ class RunExportJobs
             $this->processor->debugMode = $this->helper->getDebugMode();
             $this->processor->setLogger($this->helper->getLogger());
             $this->processor->inConsole = 1;
-            $this->processor->process($jobId);
+            $result = $this->processor->process($jobId);
             $this->helper->saveFinishExHistory($history);
 
+            $this->sender->sendEmail(
+                $this->processor->getJob(),
+                $file,
+                (int)$result
+            );
             return true;
         }
 

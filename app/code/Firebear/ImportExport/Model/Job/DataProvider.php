@@ -6,9 +6,9 @@
 
 namespace Firebear\ImportExport\Model\Job;
 
+use Firebear\ImportExport\Api\Data\ImportInterface;
 use Firebear\ImportExport\Model\ResourceModel\Job\CollectionFactory;
 use Magento\Framework\App\Request\DataPersistorInterface;
-use Firebear\ImportExport\Api\Data\ImportInterface;
 use Magento\Ui\DataProvider\Modifier\ModifierInterface;
 use Magento\Ui\DataProvider\Modifier\PoolInterface;
 
@@ -231,8 +231,7 @@ class DataProvider extends \Magento\Ui\DataProvider\AbstractDataProvider
             $result['price_rules_rows'][] = [
                 'apply' => $field['apply'],
                 'value' => $field['value'],
-                'price_rules_conditions_hidden' =>
-                    isset($field['price_rules_conditions_hidden'])
+                'price_rules_conditions_hidden' => isset($field['price_rules_conditions_hidden'])
                         ? http_build_query($field['price_rules_conditions_hidden']) : '',
                 'record_id' => $count
             ];

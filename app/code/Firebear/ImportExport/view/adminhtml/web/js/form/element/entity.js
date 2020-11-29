@@ -58,6 +58,16 @@ define(
                                     $(this).css('display', 'block');
                                 }
                             }
+                            if (dataIndex == 'send_email' ||
+                                dataIndex == 'generate_shipment_by_track' ||
+                                dataIndex == 'generate_invoice_by_track'
+                            ) {
+                                if (entityValue == 'order_behavior') {
+                                    $(this).css('display', 'block');
+                                } else {
+                                    $(this).css('display', 'none');
+                                }
+                            }
                         });
                     }, 3000);
                 },
@@ -105,6 +115,16 @@ define(
                                 $(this).css('display', 'none');
                             } else {
                                 $(this).css('display', 'block');
+                            }
+                        }
+                        if (dataIndex == 'send_email' ||
+                            dataIndex == 'generate_shipment_by_track' ||
+                            dataIndex == 'generate_invoice_by_track'
+                        ) {
+                            if (entityValue == 'order') {
+                                $(this).css('display', 'block');
+                            } else {
+                                $(this).css('display', 'none');
                             }
                         }
                         if (dataIndex == 'categories_separator') {

@@ -16,6 +16,7 @@ use Magento\ImportExport\Model\Import;
 use Magento\ImportExport\Model\Import\AbstractEntity;
 use Magento\ImportExport\Model\Import\AbstractSource;
 use Magento\ImportExport\Model\ImportFactory;
+use Magento\Review\Model\Rating\Option\VoteFactory;
 use Magento\ImportExport\Model\ResourceModel\Helper;
 use Magento\Review\Model\RatingFactory;
 use Magento\Review\Model\ResourceModel\Rating\CollectionFactory as RatingCollectionFactory;
@@ -40,6 +41,11 @@ class Review extends AbstractEntity implements ImportAdapterInterface
      * Review id column name
      */
     const COLUMN_REVIEW_ID = 'review_id';
+
+    /**
+     * Created at column name
+     */
+    const COLUMN_CREATED_AT = 'created_at';
 
     /**
      * Entity pk value column name
@@ -180,11 +186,17 @@ class Review extends AbstractEntity implements ImportAdapterInterface
         'vote:Rating'
     ];
 
+    /**
+     * @var VoteFactory
+     */
+    protected $_ratingOptionVoteF;
+
     protected $_availableBehaviors = [
         \Magento\ImportExport\Model\Import::BEHAVIOR_ADD_UPDATE,
         \Magento\ImportExport\Model\Import::BEHAVIOR_DELETE,
         \Magento\ImportExport\Model\Import::BEHAVIOR_REPLACE,
     ];
+
     /**
      * Initialize import
      *
@@ -196,6 +208,7 @@ class Review extends AbstractEntity implements ImportAdapterInterface
      * @param RatingFactory $ratingFactory
      * @param RatingCollectionFactory $ratingCollectionFactory
      * @param StoreManagerInterface $storeManager
+     * @param VoteFactory $ratingOptionVoteF
      * @param array $data
      */
     public function __construct(
@@ -207,6 +220,7 @@ class Review extends AbstractEntity implements ImportAdapterInterface
         RatingFactory $ratingFactory,
         RatingCollectionFactory $ratingCollectionFactory,
         StoreManagerInterface $storeManager,
+        VoteFactory $ratingOptionVoteF,
         array $data = []
     ) {
         $this->_logger = $context->getLogger();
@@ -219,6 +233,7 @@ class Review extends AbstractEntity implements ImportAdapterInterface
         $this->ratingFactory = $ratingFactory;
         $this->ratingCollectionFactory = $ratingCollectionFactory;
         $this->storeManager = $storeManager;
+        $this->_ratingOptionVoteF = $ratingOptionVoteF;
 
         parent::__construct(
             $context->getStringUtils(),
@@ -505,12 +520,24 @@ class Review extends AbstractEntity implements ImportAdapterInterface
         );
         $review->addData($rowData);
         $review->save();
+        $this->updateDateFromDump($review->getId(), $rowData);
+
+        $votes = $this->_ratingOptionVoteF->create()
+            ->getResourceCollection()
+            ->setReviewFilter($review->getId())
+            ->addOptionInfo()
+            ->load()
+            ->addRatingOptions();
 
         foreach ($rating as $ratingId => $optionId) {
-            $this->ratingFactory->create()
-                ->setRatingId($ratingId)
-                ->setReviewId($review->getId())
-                ->addOptionVote($optionId, $rowData[self::COLUMN_ENTITY_PK_VALUE]);
+            $ratingFac = $this->ratingFactory->create()->setReviewId($review->getId());
+            if ($vote = $votes->getItemByColumnValue('rating_id', $ratingId)) {
+                $ratingFac->setVoteId($vote->getId())
+                    ->updateOptionVote($optionId);
+            } else {
+                $ratingFac->setRatingId($ratingId)
+                    ->addOptionVote($optionId, $rowData[self::COLUMN_ENTITY_PK_VALUE]);
+            }
         }
         $review->aggregate();
         return $this;
@@ -568,6 +595,7 @@ class Review extends AbstractEntity implements ImportAdapterInterface
                     continue;
                 }
                 $rowData = $this->customBunchesData($rowData);
+                $rowData = $this->validateCreatedAt($rowData, $source->key());
                 $this->_processedRowsCount++;
                 if ($this->validateRow($rowData, $source->key())) {
                     $rowSize = strlen($this->jsonHelper->jsonEncode($rowData));
@@ -586,6 +614,44 @@ class Review extends AbstractEntity implements ImportAdapterInterface
             }
         }
         return $this;
+    }
+
+    /**
+     * @param $rowData
+     * @param $rowNum
+     * @return mixed
+     */
+    protected function validateCreatedAt($rowData, $rowNum)
+    {
+        $createdAt = $rowData[self::COLUMN_CREATED_AT] ?? false;
+        if ($createdAt) {
+            $format = 'Y-m-d H:i:s';
+            $date = \DateTime::createFromFormat($format, $createdAt);
+            if ($date) {
+                $rowData[self::COLUMN_CREATED_AT] = $date->format($format);
+            } else {
+                $message = 'review with review_id: %1 not imported because the created_at is not correct.';
+                $this->addLogWriteln(__($message, $rowData[self::COLUMN_REVIEW_ID]), $this->output, 'error');
+                $this->addRowError(__($message, $rowData[self::COLUMN_REVIEW_ID]), $rowNum);
+            }
+        }
+
+        return $rowData;
+    }
+
+    /**
+     * @param $reviewId
+     * @param $rowData
+     */
+    protected function updateDateFromDump($reviewId, $rowData)
+    {
+        if ($reviewId) {
+            $this->_connection->insertOnDuplicate(
+                $this->_connection->getTableName('review'),
+                [self::COLUMN_REVIEW_ID => $reviewId, self::COLUMN_CREATED_AT => $rowData[self::COLUMN_CREATED_AT]],
+                [self::COLUMN_CREATED_AT]
+            );
+        }
     }
 
     /**

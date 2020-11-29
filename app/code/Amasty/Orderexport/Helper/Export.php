@@ -128,32 +128,32 @@ class Export extends AbstractHelper
     /**
      * @type mixed
      */
-    private $fileHandler;
+    protected $fileHandler;
 
     /**
      * @type mixed
      */
-    private $filePath;
+    protected $filePath;
 
     /**
      * @type mixed
      */
-    private $attachmentFilePath;
+    protected $attachmentFilePath;
 
     /**
      * @var Profiles
      */
-    private $profile;
+    protected $profile;
 
     /**
      * @var Uploader
      */
-    private $helperUploader;
+    protected $helperUploader;
 
     /**
      * @var File
      */
-    private $helperFile;
+    protected $helperFile;
 
     /**
      * @var Filter

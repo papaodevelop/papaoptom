@@ -489,6 +489,9 @@ Add import JSON
 ==============
 * Features:
     * Timestamp added to each log entry.
+    * Add shipment auto generator.
+    * Add invoice auto generator.
+    * Add creditmemo auto generator.
 * Bugfixes:
     * Fixed all filters for export review.
     * Fixed Search Terms export: delete Is Active, Is Processed filters. Fixed Display in Teams, Num Result filters.
@@ -534,7 +537,6 @@ Add import JSON
 ==============
 * Features:
     * Add catalog rule import export.
-    * Add sales rule import export.
 * Bugfixes:
     * Improvements to excel file to fetch sheet through other sources.
     * Export category store_name if changed.
@@ -584,6 +586,7 @@ Add import JSON
 ==============
 * Features:
     * Add newsletter subscriber import export.
+    * Added email notifications upon starting and completing import/export jobs.
     * migration add-on: add enterprise url rewrite migration job, delete with conditions preJob
     * migration add-on: add attribute sets and groups migration
     * migration add-on: updated progress bar information in console and added test bunch size option for testing migration
@@ -607,10 +610,117 @@ Add import JSON
 
 3.3.1
 ==============
-Features:
+* Features:
     * Added support of limitation of count of entities for product export.
-    * Refactor save action to enable plugins added to controller  
+    * Refactor save action to enable plugins added to controller
     * Make some method public in Model\Export\Product.php to attach plugins
 
-Bugfixes:
+* Bugfixes:
     * Fixed product categories empty value during export
+
+3.3.2
+==============
+* Features:
+    * Add customer groups ids validator
+    * Add support for JSON export.
+    * Migration add-on: add new mapper for attribute option and job for url rewrites from M2 to M2 migration
+    * migration add-on: add duplication cleaner, create company post job, updated sequence tables support, added prefix support for pre jobs
+
+* Bugfixes:
+    * Fixed undefined variable. 
+    * sql column count error
+    * Fixed undefined variable warning
+    * Added console error if deleting customer when he is admin company for import customer of behavior delete.
+    * Removed protected constants as those aren't allowed in PHP 7.0
+    * Dateformat issue when saved for special_price_from_date saved wrong.
+    * Fixed export xlsx ods for ftp.
+    * Added store view code filter for export page.
+    * Fixed store view code filter of export page for CE.
+    * Validate customer address entity if same entity id is at another customer. Error output to the console.
+    * Fix missing data for column 'category_ids' when export products with mapping and added column 'category_ids' when export products without mapping.
+    * Fixed import product for various store view code.
+    * Fix behavior replace for quote.
+    * Prepare entity name for console output.
+    * Fixed behavior replace for quote.
+    * Remove temp files after export.
+    * Fix id for search terms.
+    * Added behavior replace and fixed mapping for search synonyms import.
+    * Fixed export advanced pricing with mappings.
+    * Fix reviews export remove extra data.
+    * Deleted entity Stock Sources for master if module ImportExportMsi don't setup.
+    * Fix widget export remove extra data.
+    * Fixed behavior replace search terms.
+    * Correct saving date for review import.
+    * Add skus field validation.
+    * Move email notifications section.
+
+3.4.0
+==============
+* Features:
+    * Added the ability to transfer image import to the product queue.
+    * Added product cache for import.
+    * Import Speed Optimization.
+    * Multi-store category content supported and import category with category id possible
+    * Improve Platform Logic to take maxDataSize and maxBunchSize.
+* Bugfixes:
+    * Issue with Attribute imports when the behaviour is append.
+    * Fixed order import mapping.
+    * Fixed import logging when Email Notifications service is enabled.
+    * Improvement to uploader class for image.
+    * Exort of attribute_code for multiple attributeSets.
+    * Fix issue with customer_composite import.
+    * Fixed incorrect product URL key generation when the only update mode was selected and url_key attribute was empty.
+    * Fixed the incorrect order date and totals update. When the file contains not a full attributes list.
+    * Behavior replace for cart price rule.
+    * Added validate attribute_code for import attributes.
+    * Fix export category invalid argument.
+    * Correct rating saving.
+    * Fix configurable product replace if is custom logic for creation of configurable products.
+    * Fix display bundle product on frontend.
+
+3.4.1
+==============
+* Bugfixes:
+    * Fixed the issue with module dependence when Dotdigitalgroup_Email is not installed
+
+3.4.2
+==============
+* Bugfixes:
+    * Fixed the issue with module Dotdigitalgroup_Email for Magento 2.3.3.
+    * Fixed the issue with logging errors for image import.
+
+3.4.3
+==============
+* Features:
+    * Add product fields to order export.
+    * Control import bunch size from the system config.
+* Bugfixes:
+    * The Stripslashes Php function was added to prepare product data.
+    * Fixed the only admin filter issue during the export categories.
+    * Fixed behavior replace search terms.
+    * Added tooltip for import export job form.
+    * Added checkbox add product QTY to existing value for import product.
+    * Fixed issue with platform select and using default import source, then other than file is selected it breaks the form.
+    * Assign a unique image position issue was fixed.
+    * Fix resize images after import if version ee.
+    * Fixed Class MediaVideoGallery Dependency for 2.2.3
+    * Support for old email generation methods in EmailTransportBuilder and MailTransportBuilder for 2.2.3
+    * Support for old version Uploader for 2.2.3
+    * Fixed the deffered image error log issue.
+    * Fixed the custom options import issue.
+    * Fix duplicate attribute options values.
+    * Fixed the import url rewrites issue.
+    * Fixed the import default value issue when importing products for multiple store views.
+    * Fixed the import validation issue when the category url_path is empty.
+    * Fixed the undefined category id issue when exporting products.
+    * Fixed the database prefix issue when importing products.
+    * Use default value for "enable product" in store views
+    * Fixed the category export when 'all store views' is set for Magento 2.4.0-beta1.
+    * Fixed export attribute.
+    * Issue with Magento_Inventory disable for customers then it breaks the import.
+    * Hotfix/export mappings improvements
+    * The output is not needed in processor
+    * Product URL_Key generation
+    * Export of attribute_code for multiple AttributeSet
+    * url_key generation issue 
+    * Export Product Entity and Order Entity in single csv file

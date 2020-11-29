@@ -640,7 +640,6 @@ class Import extends \Magento\ImportExport\Model\Import
         $this->setData('behavior', $this->getBehavior());
         $this->addLogComment(__('Begin import of "%1" with "%2" behavior', $this->getEntity(), $this->getBehavior()));
         $result = $this->processImportPart($file, $offset, $job);
-
         if ($result) {
             if ($show) {
                 $this->showErrors();

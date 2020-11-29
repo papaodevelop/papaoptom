@@ -5,6 +5,7 @@
  */
 namespace Firebear\ImportExport\Model\Import\Order;
 
+use Magento\Framework\Exception\LocalizedException;
 use Magento\ImportExport\Model\Import;
 
 /**
@@ -17,6 +18,12 @@ class Shipment extends AbstractAdapter
      *
      */
     const ENTITY_TYPE_CODE = 'order';
+
+    /**
+     * Prefix of Fields
+     *
+     */
+    const PREFIX = 'shipment';
 
     /**
      * Entity Id Column Name
@@ -65,11 +72,12 @@ class Shipment extends AbstractAdapter
      */
     public function prepareRowData(array $rowData)
     {
-        parent::prepareRowData($rowData);
-        $rowData = $this->_extractField($rowData, 'shipment');
+        $this->prepareCurrentOrderId($rowData);
+        $rowData = $this->_extractField($rowData, static::PREFIX);
         if (!empty($rowData['shipping_label'])) {
             $rowData['shipping_label'] = base64_decode($rowData['shipping_label']);
         }
+
         return (count($rowData) && !$this->isEmptyRow($rowData))
             ? $rowData
             : false;

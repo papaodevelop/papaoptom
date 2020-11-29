@@ -120,6 +120,11 @@ class SearchTerms extends AbstractEntity implements ImportAdapterInterface
     /**
      * @var array
      */
+    protected $searchQueriesForReplace = [];
+
+    /**
+     * @var array
+     */
     private $entityFieldsToUpdate = [];
 
     /**
@@ -128,6 +133,11 @@ class SearchTerms extends AbstractEntity implements ImportAdapterInterface
      * @var int
      */
     private $nextEntityId;
+
+    /**
+     * @var array
+     */
+    protected $storeList = [];
 
     /**
      * Search Terms constructor.
@@ -176,6 +186,7 @@ class SearchTerms extends AbstractEntity implements ImportAdapterInterface
         $this->_logger = $context->getLogger();
 
         $this->initSearchQueries();
+        $this->initStore();
     }
 
     /**
@@ -208,6 +219,17 @@ class SearchTerms extends AbstractEntity implements ImportAdapterInterface
     }
 
     /**
+     * Initialize Store id data
+     */
+    protected function initStore()
+    {
+        $stores = $this->storeRepository->getList();
+        foreach ($stores as $store) {
+            $this->storeList[$store->getId()] = 1;
+        }
+    }
+
+    /**
      * Import data rows.
      *
      * @return boolean
@@ -218,18 +240,27 @@ class SearchTerms extends AbstractEntity implements ImportAdapterInterface
         $this->_validatedRows = null;
         if (Import::BEHAVIOR_DELETE == $this->getBehavior()) {
             $this->delete();
+        } elseif (Import::BEHAVIOR_REPLACE == $this->getBehavior()) {
+            $this->replaceProcess();
         } else {
-            /**
-             * If user select replace behavior existing Search Queries will be deleted first,
-             * then new Search Queries will be saved
-             */
-            if (Import::BEHAVIOR_REPLACE == $this->getBehavior()) {
-                $this->delete();
-            }
             $this->save();
         }
 
         return true;
+    }
+
+    /**
+     * @return $this
+     * @throws LocalizedException
+     */
+    protected function replaceProcess()
+    {
+        $this->delete();
+        if (!empty($this->searchQueriesForReplace)) {
+            $this->save();
+        }
+
+        return $this;
     }
 
     /**
@@ -240,29 +271,25 @@ class SearchTerms extends AbstractEntity implements ImportAdapterInterface
     protected function delete()
     {
         while ($bunch = $this->_dataSourceModel->getNextBunch()) {
-            $idsToDelete = [];
             foreach ($bunch as $rowNum => $rowData) {
                 if ($this->validateRow($rowData, $rowNum)) {
-                    $idsToDelete = array_merge($idsToDelete, $this->getProcessedIds($rowData));
-                }
-            }
-
-            if ($idsToDelete) {
-                try {
-                    $this->countItemsDeleted += count($idsToDelete);
-                    $this->_connection->delete(
-                        $this->queryResource->getMainTable(),
-                        [self::COL_QUERY_ID.' IN (?)' => $idsToDelete]
-                    );
-                    foreach ($this->searchQueries as $queryText => $queryByStore) {
-                        foreach ($queryByStore as $storeId => $id) {
-                            if (in_array($id, $idsToDelete)) {
-                                unset($this->searchQueries[$queryText][$storeId]);
+                    $idToDelete = $this->getProcessedId($rowData);
+                    if ($idToDelete) {
+                        try {
+                            $del = $this->_connection->delete(
+                                $this->queryResource->getMainTable(),
+                                [self::COL_QUERY_ID . ' IN (?)' => $idToDelete]
+                            );
+                            if ($del) {
+                                $this->countItemsDeleted++;
+                                if (Import::BEHAVIOR_REPLACE == $this->getBehavior()) {
+                                    $this->searchQueriesForReplace[$idToDelete] = true;
+                                }
                             }
+                        } catch (Exception $e) {
+                            $this->addLogWriteln(__('Search Term can\'t be deleted.'), $this->output, 'error');
                         }
                     }
-                } catch (Exception $e) {
-                    $this->addLogWriteln(__('Search Term can\'t be deleted.'), $this->output, 'error');
                 }
             }
         }
@@ -314,13 +341,25 @@ class SearchTerms extends AbstractEntity implements ImportAdapterInterface
             }
 
             try {
-                if (!empty($rowsToInsert)) {
-                    $this->countItemsCreated += $this->_connection->insertMultiple(
-                        $this->queryResource->getMainTable(),
-                        $rowsToInsert
-                    );
+                if (Import::BEHAVIOR_REPLACE == $this->getBehavior() &&
+                    !empty($rowsToUpdate) &&
+                    !empty($this->searchQueriesForReplace)
+                ) {
+                    $rowsToUpdatePrepare = [];
+                    foreach ($rowsToUpdate as $rowData) {
+                        if (isset($this->searchQueriesForReplace[$rowData[self::COL_QUERY_ID]])) {
+                            $rowsToUpdatePrepare[] = $rowData;
+                        }
+                    }
+                    $rowsToUpdate = $rowsToUpdatePrepare;
+                } else {
+                    if (!empty($rowsToInsert)) {
+                        $this->countItemsCreated += $this->_connection->insertMultiple(
+                            $this->queryResource->getMainTable(),
+                            $rowsToInsert
+                        );
+                    }
                 }
-
                 if (!empty($rowsToUpdate)) {
                     $this->countItemsUpdated += $this->_connection->insertOnDuplicate(
                         $this->queryResource->getMainTable(),
@@ -387,7 +426,6 @@ class SearchTerms extends AbstractEntity implements ImportAdapterInterface
             }
         }
 
-        unset($rowData[self::COL_QUERY_ID]);
         if (isset($rowData[self::COL_QUERY_TEXT])) {
             $rowQueryText = $rowData[self::COL_QUERY_TEXT];
             $rowStoreId = $rowData[self::COL_STORE_ID] ?? 0;
@@ -407,28 +445,28 @@ class SearchTerms extends AbstractEntity implements ImportAdapterInterface
      * Retrieve Query id's for delete
      *
      * @param array $rowData
-     * @return array
+     * @return mixed
      */
-    public function getProcessedIds(array $rowData)
+    public function getProcessedId(array $rowData)
     {
-        $processedIds = [];
+        $processedId = false;
 
-        if (isset($rowData[self::COL_QUERY_TEXT])
+        if (isset($rowData[self::COL_QUERY_ID])) {
+            $processedId = $rowData[self::COL_QUERY_ID];
+        } elseif (isset($rowData[self::COL_QUERY_TEXT])
             && isset($rowData[self::COL_STORE_ID])
             && isset($this->searchQueries[$rowData[self::COL_QUERY_TEXT]][$rowData[self::COL_STORE_ID]])
         ) {
-            $processedIds[] = $this->searchQueries[$rowData[self::COL_QUERY_TEXT]][$rowData[self::COL_STORE_ID]];
+            $processedId = $this->searchQueries[$rowData[self::COL_QUERY_TEXT]][$rowData[self::COL_STORE_ID]];
         } elseif (isset($rowData[self::COL_QUERY_TEXT])
             && isset($this->searchQueries[$rowData[self::COL_QUERY_TEXT]])
         ) {
             foreach ($this->searchQueries[$rowData[self::COL_QUERY_TEXT]] as $storeId => $id) {
-                $processedIds[] = $id;
+                $processedId = $id;
             }
-        } elseif (isset($rowData[self::COL_QUERY_ID])) {
-            $processedIds[] = $rowData[self::COL_QUERY_ID];
         }
 
-        return $processedIds;
+        return $processedId;
     }
 
     /**
@@ -546,23 +584,42 @@ class SearchTerms extends AbstractEntity implements ImportAdapterInterface
                 $rowData = $this->customFieldsMapping($rowData);
                 $rowData = $this->customBunchesData($rowData);
                 $this->_processedRowsCount++;
+                if ($this->checkStoreId($rowData, $source->key())) {
 
-                $rowSize = strlen($this->json->serialize($rowData));
+                    $rowSize = strlen($this->json->serialize($rowData));
 
-                $isBunchSizeExceeded = $bunchSize > 0 && count($bunchRows) >= $bunchSize;
+                    $isBunchSizeExceeded = $bunchSize > 0 && count($bunchRows) >= $bunchSize;
 
-                if ($currentDataSize + $rowSize >= $maxDataSize || $isBunchSizeExceeded) {
-                    $startNewBunch = true;
-                    $nextRowBackup = [$source->key() => $rowData];
-                } else {
-                    $bunchRows[$source->key()] = $rowData;
-                    $currentDataSize += $rowSize;
+                    if ($currentDataSize + $rowSize >= $maxDataSize || $isBunchSizeExceeded) {
+                        $startNewBunch = true;
+                        $nextRowBackup = [$source->key() => $rowData];
+                    } else {
+                        $bunchRows[$source->key()] = $rowData;
+                        $currentDataSize += $rowSize;
+                    }
                 }
 
                 $source->next();
             }
         }
         return $this;
+    }
+
+    /**
+     * @param $rowData
+     * @param $rowNum
+     * @return bool
+     */
+    public function checkStoreId($rowData, $rowNum)
+    {
+        if (!isset($this->storeList[$rowData['store_id']])) {
+            $eMessage = __('Column store is no exist. Row:#%1', $rowNum);
+            $this->addLogWriteln($eMessage, $this->output, 'error');
+            $this->addRowError($eMessage, $rowNum);
+            return false;
+        }
+
+        return true;
     }
 
     /**

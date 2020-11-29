@@ -165,7 +165,9 @@ class Option extends BaseOption
             $optionsToRemove = [];
 
             foreach ($bunch as $rowNumber => $rowData) {
-                if (isset($optionId, $valueId) && empty($rowData[Product::COL_STORE_VIEW_CODE])) {
+                if (isset($optionId, $valueId) &&
+                    (empty($rowData[PRODUCT::COL_STORE_VIEW_CODE]) || empty($rowData['custom_options']))
+                ) {
                     $nextOptionId = $optionId;
                     $nextValueId = $valueId;
                 }

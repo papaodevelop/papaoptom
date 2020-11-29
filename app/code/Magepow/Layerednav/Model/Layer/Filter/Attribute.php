@@ -82,9 +82,12 @@ class Attribute extends AbstractFilter
 
     protected function _getItemsData()
     {
+
+
         if(!$this->_moduleHelper->isEnabled()){
             return parent::_getItemsData();
         }
+
 
         $attribute = $this->getAttributeModel();
 

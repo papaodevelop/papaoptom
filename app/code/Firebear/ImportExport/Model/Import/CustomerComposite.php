@@ -8,7 +8,10 @@ namespace Firebear\ImportExport\Model\Import;
 
 use Firebear\ImportExport\Model\ResourceModel\Import\CustomerComposite\Data as CustomerCompositeData;
 use Firebear\ImportExport\Traits\Import\Entity as ImportTrait;
+use Magento\Customer\Model\Indexer\Processor;
 use Magento\CustomerImportExport\Model\Import\CustomerComposite as MagentoCustomer;
+use Magento\Framework\App\ObjectManager;
+use Magento\Framework\App\ProductMetadataInterface;
 use Symfony\Component\Console\Output\ConsoleOutput;
 use \Magento\ImportExport\Model\Import\AbstractEntity;
 
@@ -35,24 +38,30 @@ class CustomerComposite extends MagentoCustomer
     ];
 
     /**
+     * @var
+     */
+    protected $indexerProcessor;
+
+    /**
      * @var CustomerCompositeData
      */
     protected $_dataSourceModel;
 
     /**
-     * @param Context                                                                                $context
-     * @param \Magento\Framework\App\Config\ScopeConfigInterface                                     $scopeConfig
-     * @param \Magento\ImportExport\Model\ImportFactory                                              $importFactory
-     * @param ProcessingErrorAggregator                                                              $errorAggregator
+     * @param Context $context
+     * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
+     * @param \Magento\ImportExport\Model\ImportFactory $importFactory
+     * @param ProcessingErrorAggregator $errorAggregator
      * @param \Magento\CustomerImportExport\Model\ResourceModel\Import\CustomerComposite\DataFactory $dataFactory
-     * @param \Magento\CustomerImportExport\Model\Import\CustomerFactory                             $customerFactory
-     * @param \Magento\CustomerImportExport\Model\Import\AddressFactory                              $addressFactory
-     * @param ConsoleOutput                                                                          $output
-     * @param \Firebear\ImportExport\Helper\Data                                                     $helper
-     * @param \Firebear\ImportExport\Model\Import\CustomerFactory                                    $fireImportCustomer
-     * @param AddressFactory                                                                         $fireImportAddress
-     * @param \Firebear\ImportExport\Model\ResourceModel\Import\CustomerComposite\DataFactory        $importFireData
-     * @param array                                                                                  $data
+     * @param \Magento\CustomerImportExport\Model\Import\CustomerFactory $customerFactory
+     * @param \Magento\CustomerImportExport\Model\Import\AddressFactory $addressFactory
+     * @param ConsoleOutput $output
+     * @param \Firebear\ImportExport\Helper\Data $helper
+     * @param \Firebear\ImportExport\Model\Import\CustomerFactory $fireImportCustomer
+     * @param AddressFactory $fireImportAddress
+     * @param \Firebear\ImportExport\Model\ResourceModel\Import\CustomerComposite\DataFactory $importFireData
+     * @param ProductMetadataInterface $productMetadata
+     * @param array $data
      *
      * @throws \Magento\Framework\Exception\LocalizedException
      */
@@ -69,20 +78,42 @@ class CustomerComposite extends MagentoCustomer
         \Firebear\ImportExport\Model\Import\CustomerFactory $fireImportCustomer,
         \Firebear\ImportExport\Model\Import\AddressFactory $fireImportAddress,
         \Firebear\ImportExport\Model\ResourceModel\Import\CustomerComposite\DataFactory $importFireData,
+        ProductMetadataInterface $productMetadata,
         array $data = []
     ) {
-        parent::__construct(
-            $context->getStringUtils(),
-            $scopeConfig,
-            $importFactory,
-            $context->getResourceHelper(),
-            $context->getResource(),
-            $errorAggregator,
-            $dataFactory,
-            $customerFactory,
-            $addressFactory,
-            $data
-        );
+        if (class_exists(Processor::class)
+            && version_compare($productMetadata->getVersion(), '2.3.5', '>=')
+        ) {
+            $indexerProcessor = ObjectManager::getInstance()->create(Processor::class);
+            $this->indexerProcessor = $indexerProcessor;
+            parent::__construct(
+                $context->getStringUtils(),
+                $scopeConfig,
+                $importFactory,
+                $context->getResourceHelper(),
+                $context->getResource(),
+                $errorAggregator,
+                $dataFactory,
+                $customerFactory,
+                $addressFactory,
+                $indexerProcessor,
+                $data
+            );
+        } else {
+            parent::__construct(
+                $context->getStringUtils(),
+                $scopeConfig,
+                $importFactory,
+                $context->getResourceHelper(),
+                $context->getResource(),
+                $errorAggregator,
+                $dataFactory,
+                $customerFactory,
+                $addressFactory,
+                $data
+            );
+        }
+
         $this->_availableBehaviors = [
             \Magento\ImportExport\Model\Import::BEHAVIOR_APPEND,
             \Magento\ImportExport\Model\Import::BEHAVIOR_DELETE,
@@ -322,5 +353,22 @@ class CustomerComposite extends MagentoCustomer
             }
         }
         return $rowData;
+    }
+
+    /**
+     * @return mixed
+     */
+    public function _getCustomerAttributes()
+    {
+        return array_merge($this->_customerAttributes, $this->_addressAttributes);
+    }
+
+    /**
+     * @param array $rowData
+     * @return mixed
+     */
+    public function prepareRowForDb(array $rowData)
+    {
+        return $this->_prepareRowForDb($rowData);
     }
 }

@@ -26,7 +26,8 @@ class Txt extends AbstractAdapter
      *
      * @param Filesystem $filesystem
      * @param null $destination
-     * @param [] $data
+     * @param array $data
+     * @throws \Magento\Framework\Exception\LocalizedException
      */
     public function __construct(
         Filesystem $filesystem,

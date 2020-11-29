@@ -75,6 +75,7 @@ class ExportJobRunCommand extends ExportJobAbstractCommand
         if ($jobCollection->getSize()) {
             foreach ($jobCollection as $job) {
                 $id = (int)$job->getEntityId();
+                $result = false;
                 try {
                     $file = $this->helper->beforeRun($id);
                     $history = $this->helper->createExportHistory($id, $file, 'console');
@@ -108,6 +109,12 @@ class ExportJobRunCommand extends ExportJobAbstractCommand
                         $e->getMessage(),
                         $output,
                         'error'
+                    );
+                } finally {
+                    $this->sender->sendEmail(
+                        $job,
+                        $file,
+                        (int)$result
                     );
                 }
             }

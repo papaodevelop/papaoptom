@@ -6,6 +6,7 @@
 
 namespace Firebear\ImportExport\Console\Command;
 
+use Firebear\ImportExport\Model\Email\Sender;
 use Firebear\ImportExport\Model\ExportJob\Processor;
 use Firebear\ImportExport\Model\ExportJob as Job;
 use Symfony\Component\Console\Command\Command;
@@ -61,6 +62,13 @@ class ExportJobAbstractCommand extends Command
     protected $jsonEncoder;
 
     /**
+     * Email sender
+     *
+     * @var Sender
+     */
+    protected $sender;
+
+    /**
      * ExportJobAbstractCommand constructor.
      * @param Job $job
      * @param Processor $importProcessor
@@ -71,6 +79,7 @@ class ExportJobAbstractCommand extends Command
      * @param \Firebear\ImportExport\Helper\Data $helper
      * @param \Magento\Framework\Json\DecoderInterface $jsonDecoder
      * @param \Magento\Framework\Json\EncoderInterface $jsonEncoder
+     * @param Sender $sender
      */
     public function __construct(
         Job $job,
@@ -81,7 +90,8 @@ class ExportJobAbstractCommand extends Command
         \Firebear\ImportExport\Logger\Logger $logger,
         \Firebear\ImportExport\Helper\Data $helper,
         \Magento\Framework\Json\DecoderInterface $jsonDecoder,
-        \Magento\Framework\Json\EncoderInterface $jsonEncoder
+        \Magento\Framework\Json\EncoderInterface $jsonEncoder,
+        Sender $sender
     ) {
         parent::__construct();
         $this->job = $job;
@@ -93,6 +103,7 @@ class ExportJobAbstractCommand extends Command
         $this->helper = $helper;
         $this->jsonDecoder = $jsonDecoder;
         $this->jsonEncoder = $jsonEncoder;
+        $this->sender = $sender;
     }
 
     /**

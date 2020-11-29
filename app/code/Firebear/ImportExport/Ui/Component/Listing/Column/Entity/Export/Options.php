@@ -42,6 +42,9 @@ class Options implements \Magento\Framework\Option\ArrayInterface
         $entities = [];
         $options = [['label' => __('-- Please Select --'), 'value' => '']];
         foreach ($this->exportConfig->getEntities() as $entityName => $entityConfig) {
+            if ($entityName == 'stock_sources') {
+                continue;
+            }
             $options[] = ['value' => $entityName, 'label' => __($entityConfig['label'])];
             $entities[] = $entityName;
         }

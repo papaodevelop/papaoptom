@@ -122,7 +122,10 @@ class EntityHandler implements EntityHandlerInterface
     private function getValidEntityType(array $rowData, EntityHandlerInterface $handler)
     {
         return isset($rowData[CommonHandler::COLUMN_ENTITY_TYPE])
-            && $rowData[CommonHandler::COLUMN_ENTITY_TYPE] === $handler->getEntityType();
+            && (
+            $rowData[CommonHandler::COLUMN_ENTITY_TYPE] === $handler->getEntityType() ||
+            $handler->getEntityType() === CommonHandler::ENTITY_TYPE
+        );
     }
 
     /**

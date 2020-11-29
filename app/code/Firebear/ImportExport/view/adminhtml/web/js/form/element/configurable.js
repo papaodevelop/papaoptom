@@ -53,7 +53,28 @@ define(
                     );
 
                     this.setOptions(newOptions);
+
+                    var oldVal = this.value();
+
+                    if (oldVal !== 'undefined'
+                        && oldVal !== ""
+                    ) {
+                        this.value(oldVal);
+                        localStorage.setItem('configurable_field', oldVal);
+                    } else {
+                        this.value(localStorage.getItem('configurable_field'));
+                    }
                 },
+                onChangeValue: function (value) {
+                    if (value !== 'undefined'
+                        && value !== ""
+                    ) {
+                        this.value(value);
+                        localStorage.setItem('configurable_field', value);
+                    } else {
+                        this.value(localStorage.getItem('configurable_field'));
+                    }
+                }
             }
         )
     }

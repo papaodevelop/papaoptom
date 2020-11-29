@@ -10,8 +10,13 @@
         <firebear_importexport>
             <general>
                 <create_attributes>1</create_attributes>
+                <supplier_code> </supplier_code>
                 <debug>1</debug>
             </general>
+            <import_config>
+                <general_file_bunch_size>100</general_file_bunch_size>
+                <import_format_v2_bunch_size>100</import_format_v2_bunch_size>
+            </import_config>
             <ftp>
                 <port>21</port>
             </ftp>
@@ -22,5 +27,15 @@
                 <available>catalog_product_save_after,sales_order_save_after,checkout_submit_all_after</available>
             </event>
         </firebear_importexport>
+        <general>
+            <file>
+                <bunch_size>100</bunch_size>
+            </file>
+        </general>
+        <import>
+            <format_v2>
+                <bunch_size>100</bunch_size>
+            </format_v2>
+        </import>
     </default>
 </config>

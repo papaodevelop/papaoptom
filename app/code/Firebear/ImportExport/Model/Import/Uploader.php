@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * @copyright: Copyright © 2017 Firebear Studio. All rights reserved.
  * @author   : Firebear Studio <fbeardev@gmail.com>
@@ -6,6 +7,10 @@
 
 namespace Firebear\ImportExport\Model\Import;
 
+use function array_flip;
+use function array_search;
+use function class_exists;
+use function explode;
 use finfo;
 use Firebear\ImportExport\Helper\MediaHelper;
 use Firebear\ImportExport\Model\Filesystem\File\ReadFactory;
@@ -13,16 +18,15 @@ use Magento\Framework\Exception\FileSystemException;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Filesystem;
 use Magento\Framework\Filesystem\DriverPool;
+use Magento\Framework\HTTP\Client\Curl;
 use Magento\Framework\Image\AdapterFactory;
 use Magento\MediaStorage\Helper\File\Storage;
 use Magento\MediaStorage\Helper\File\Storage\Database;
 use Magento\MediaStorage\Model\File\Validator\NotProtectedExtension;
-use function array_flip;
-use function array_search;
-use function class_exists;
-use function explode;
 use function pathinfo;
 use function strpos;
+use Symfony\Component\Console\Output\ConsoleOutput;
+use Zend_Uri;
 
 /**
  * Class Uploader
@@ -36,13 +40,25 @@ class Uploader extends \Magento\CatalogImportExport\Model\Import\Uploader
     /**
      * Default User Agent chain to prevent 403 forbidden issue
      */
-    const DEFAULT_HTTP_USER_AGENT = 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)';
+    const DEFAULT_HTTP_USER_AGENT = "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)";
 
-    private $httpScheme = 'http://';
+    protected $httpScheme = 'http://';
     /**
      * @var MediaHelper
      */
-    private $mediaHelper;
+    protected $mediaHelper;
+
+    /**
+     * @var Curl
+     */
+    protected $curl;
+
+    protected $entity;
+
+    /**
+     * @var ConsoleOutput
+     */
+    protected $output;
 
     /**
      * Uploader constructor.
@@ -55,10 +71,11 @@ class Uploader extends \Magento\CatalogImportExport\Model\Import\Uploader
      * @param Filesystem\File\ReadFactory $readFactory
      * @param ReadFactory $fireReadFactory
      * @param MediaHelper $mediaHelper
+     * @param Curl $curl
      * @param null $filePath
      *
-     * @throws LocalizedException
      * @throws FileSystemException
+     * @throws LocalizedException
      */
     public function __construct(
         Database $coreFileStorageDb,
@@ -69,6 +86,7 @@ class Uploader extends \Magento\CatalogImportExport\Model\Import\Uploader
         Filesystem\File\ReadFactory $readFactory,
         ReadFactory $fireReadFactory,
         MediaHelper $mediaHelper,
+        Curl $curl,
         $filePath = null
     ) {
         parent::__construct(
@@ -83,16 +101,17 @@ class Uploader extends \Magento\CatalogImportExport\Model\Import\Uploader
 
         $this->_readFactory = $fireReadFactory;
         $this->mediaHelper = $mediaHelper;
+        $this->curl = $curl;
     }
 
     /**
-     * @param $url
-     *
-     * @return bool
+     * @param $entity
+     * @return $this
      */
-    public function checkValidUrl($url)
+    public function setEntity($entity)
     {
-        return $this->mediaHelper->checkValidUrl($url);
+        $this->entity = $entity;
+        return $this;
     }
 
     /**
@@ -124,19 +143,28 @@ class Uploader extends \Magento\CatalogImportExport\Model\Import\Uploader
      */
     public function move($fileName, $renameFileOff = false, $existingUpload = [])
     {
+        $fileName = trim($fileName);
         if ($this->checkValidUrl($fileName)) {
             if (strpos($fileName, MediaHelper::YOUTUBE) !== false) {
                 $fileName = $this->mediaHelper->getYoutubeVideoImage($fileName);
             } elseif (strpos($fileName, MediaHelper::VIMEO) !== false) {
                 $fileName = $this->mediaHelper->getVimeoVideoImage($fileName);
             }
+        } elseif (strpos($fileName, MediaHelper::YOUTUBE) !== false
+            || strpos($fileName, MediaHelper::VIMEO) !== false
+        ) {
+            $this->entity->addLogWriteln(
+                __('Error with downloading image for %1', $fileName),
+                $this->getOutput(),
+                'error'
+            );
+            return [];
         }
         $file_info = '';
         $mime_type = $this->getImageMimeType();
         if ($renameFileOff) {
             $this->setAllowRenameFiles(false);
         }
-        $fileName = trim($fileName);
         if (preg_match('/\bhttps?:\/\//i', $fileName, $matches)) {
             if (class_exists(finfo::class)) {
                 $file_info = new finfo(FILEINFO_MIME_TYPE);
@@ -166,20 +194,44 @@ class Uploader extends \Magento\CatalogImportExport\Model\Import\Uploader
             }
 
             if (!$this->isImageQueryString($fileName)) {
-                $ch = curl_init();
+                $this->getCurl()
+                    ->setOptions(
+                        [
+                            CURLOPT_RETURNTRANSFER => 1,
+                            CURLOPT_BINARYTRANSFER => 1,
+                            CURLOPT_FOLLOWLOCATION => 1,
+                            CURLOPT_UNRESTRICTED_AUTH => 1,
+                        ]
+                    );
                 $url = $httpDriver . $hostname . $path;
-                curl_setopt($ch, CURLOPT_URL, $url);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-                curl_setopt($ch, CURLOPT_BINARYTRANSFER, 1);
-                if (isset($urlProp['user'], $urlProp['pass'])) {
-                    curl_setopt($ch, CURLOPT_USERPWD, $urlProp['user'] . ':' . $urlProp['pass']);
+                $newPath = [];
+                if (!Zend_Uri::check($url)) {
+                    foreach (explode('/', $path) as $p) {
+                        $newPath[] = rawurlencode($p);
+                    }
+                    $path = implode('/', $newPath);
+                    $path = str_ireplace(['%C4_', '%C5_'], ['%C4%9F', '%C5%9E'], $path);
+                    $url = $this->httpScheme . $hostname . $path;
                 }
-                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
-                curl_setopt($ch, CURLOPT_UNRESTRICTED_AUTH, 1);
-                $data = curl_exec($ch);
-                $info = curl_getinfo($ch);
 
-                curl_close($ch);
+                if (isset($urlProp['user'], $urlProp['pass'])) {
+                    $this->getCurl()
+                        ->setOption(
+                            CURLOPT_USERPWD,
+                            $urlProp['user'] . ':' . $urlProp['pass']
+                        );
+                }
+
+                $this->getCurl()->get($url);
+                $data = $this->getCurl()->getBody();
+
+                if (!getimagesizefromstring($data)) {
+                    $this->entity->addLogWriteln(
+                        __('Image not found string illegal %1', $url),
+                        $this->getOutput(),
+                        'error'
+                    );
+                }
                 if ($file_info instanceof finfo) {
                     $mime_type = $file_info->buffer($data);
                 }
@@ -228,6 +280,16 @@ class Uploader extends \Magento\CatalogImportExport\Model\Import\Uploader
     }
 
     /**
+     * @param $url
+     *
+     * @return bool
+     */
+    public function checkValidUrl($url)
+    {
+        return $this->mediaHelper->checkValidUrl($url);
+    }
+
+    /**
      * @param string $mime_type
      *
      * @return string
@@ -239,6 +301,15 @@ class Uploader extends \Magento\CatalogImportExport\Model\Import\Uploader
     }
 
     /**
+     * @param $path
+     * @return array|false|int|string|null
+     */
+    protected function parseUrl($path)
+    {
+        return parse_url($path);
+    }
+
+    /**
      * @param $fileName
      *
      * @return bool
@@ -246,6 +317,30 @@ class Uploader extends \Magento\CatalogImportExport\Model\Import\Uploader
     private function isImageQueryString($fileName)
     {
         return strpos($fileName, '?') !== false;
+    }
+
+    /**
+     * @return Curl
+     */
+    public function getCurl()
+    {
+        return $this->curl;
+    }
+
+    /**
+     * @return ConsoleOutput
+     */
+    public function getOutput()
+    {
+        return $this->output;
+    }
+
+    /**
+     * @param ConsoleOutput|null $output
+     */
+    public function setOutput(ConsoleOutput $output = null)
+    {
+        $this->output = $output;
     }
 
     /**
@@ -283,16 +378,33 @@ class Uploader extends \Magento\CatalogImportExport\Model\Import\Uploader
         return $this->_directory->isWritable($directory);
     }
 
-    protected function parseUrl($path)
-    {
-        return parse_url($path);
-    }
-
     /**
      * @return array
      */
     public function getAllowedFileExtension()
     {
         return array_keys($this->_allowedMimeTypes);
+    }
+
+    /**
+     * Get dispersion path
+     *
+     * @param string $fileName
+     * @return string
+     */
+    public static function getDispersionPath($fileName)
+    {
+        $char = 0;
+        $dispersionPath = '';
+        while ($char < 2 && $char < strlen($fileName)) {
+            if (empty($dispersionPath)) {
+                $dispersionPath = '/' . ('.' == $fileName[$char] ? '_' : $fileName[$char]);
+            } else {
+                $dispersionPath = self::_addDirSeparator($dispersionPath)
+                    . ('.' == $fileName[$char] ? '_' : $fileName[$char]);
+            }
+            $char++;
+        }
+        return $dispersionPath;
     }
 }

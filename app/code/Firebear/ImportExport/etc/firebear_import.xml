@@ -23,14 +23,14 @@
     <entity name="order" label="Orders" model="Firebear\ImportExport\Model\Import\Order"
             behaviorModel="Firebear\ImportExport\Model\Source\Import\Behavior\Order"/>
     <entity name="attribute" label="Attributes" model="Firebear\ImportExport\Model\Import\Attribute"
-            behaviorModel="Firebear\ImportExport\Model\Source\Import\Behavior\Order"/>
+            behaviorModel="Magento\ImportExport\Model\Source\Import\Behavior\Basic"/>
     <entity name="url_rewrite" label="Url Rewrite" model="Firebear\ImportExport\Model\Import\UrlRewrite"
             behaviorModel="Magento\ImportExport\Model\Source\Import\Behavior\Basic"/>
     <entity name="widget" label="Widget" model="Firebear\ImportExport\Model\Import\Widget"
             behaviorModel="Magento\ImportExport\Model\Source\Import\Behavior\Basic"/>
     <entity name="review" label="Review" model="Firebear\ImportExport\Model\Import\Review"
             behaviorModel="Magento\ImportExport\Model\Source\Import\Behavior\Basic"/>
-    <entity name="sales_rule" label="Sales Rule" model="Firebear\ImportExport\Model\Import\SalesRule"
+    <entity name="sales_rule" label="Cart Price Rules" model="Firebear\ImportExport\Model\Import\SalesRule"
             behaviorModel="Magento\ImportExport\Model\Source\Import\Behavior\Basic"/>
     <entity name="catalog_rule" label="Catalog Rule" model="Firebear\ImportExport\Model\Import\CatalogRule"
             behaviorModel="Magento\ImportExport\Model\Source\Import\Behavior\Basic"/>

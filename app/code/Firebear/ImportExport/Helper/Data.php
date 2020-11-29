@@ -14,12 +14,14 @@ use Firebear\ImportExport\Model\Import\HistoryFactory;
 use Firebear\ImportExport\Model\Job\Processor;
 use Firebear\ImportExport\Model\Source\Config;
 use Firebear\ImportExport\Model\Source\Factory;
+use Firebear\ImportExport\Model\Email\Sender;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Framework\App\Helper\AbstractHelper;
 use Magento\Framework\App\Helper\Context;
 use Magento\Framework\Filesystem;
 use Magento\Framework\Stdlib\DateTime\TimezoneInterface;
+use Magento\ImportExport\Model\Import\ErrorProcessing\ProcessingError;
 use Firebear\ImportExport\Model\ResourceModel\Import\DataFactory;
 
 /**
@@ -148,6 +150,13 @@ class Data extends AbstractHelper
     protected $jsonDecoder;
 
     /**
+     * Email sender
+     *
+     * @var Sender
+     */
+    protected $sender;
+
+    /**
      * Data constructor.
      *
      * @param Context $context
@@ -165,6 +174,7 @@ class Data extends AbstractHelper
      * @param DataFactory $dataFactory
      * @param \Firebear\ImportExport\Model\Source\Platform\Config $configPlatforms
      * @param Factory $factory
+     * @param Sender $sender
      * @throws \Magento\Framework\Exception\FileSystemException
      */
     public function __construct(
@@ -183,7 +193,8 @@ class Data extends AbstractHelper
         DataFactory $dataFactory,
         \Firebear\ImportExport\Model\Source\Platform\Config $configPlatforms,
         \Firebear\ImportExport\Model\Source\Factory $factory,
-        \Magento\Framework\Json\DecoderInterface $jsonDecoder
+        \Magento\Framework\Json\DecoderInterface $jsonDecoder,
+        Sender $sender
     ) {
         $this->sourceFactory = $sourceFactory;
         $this->configSource = $configSource;
@@ -202,6 +213,7 @@ class Data extends AbstractHelper
         $this->platforms = $configPlatforms->get();
         $this->factory = $factory;
         $this->jsonDecoder = $jsonDecoder;
+        $this->sender = $sender;
 
         parent::__construct($context);
     }
@@ -288,17 +300,27 @@ class Data extends AbstractHelper
      */
     public function runImport($id, $file)
     {
+        $result = false;
+        $this->processor->debugMode = $this->getDebugMode();
+        $this->processor->setLogger($this->logger);
+        $this->processor->prepareJob($id);
+        $importJob = $this->processor->getJob();
+
         try {
             $history = $this->createHistory($id, $file, 'admin');
-            $this->processor->debugMode = $this->getDebugMode();
-            $this->processor->setLogger($this->logger);
             $result = $this->processor->processScope($id, $file);
             $date = $this->timeZone->date();
             $timeStamp = $date->getTimestamp();
             $this->setResultProcessor($result);
             $history->setFinishedAt($timeStamp);
             $this->historyRepository->save($history);
+
+            $errorAggregator = $this->processor->getImportModel()->getErrorAggregator();
+            if ($result && $errorAggregator->getErrorsCount([ProcessingError::ERROR_LEVEL_CRITICAL])) {
+                $result = false;
+            }
         } catch (\Exception $e) {
+            $result = false;
             $this->addLogComment(
                 'Job #' . $id . ' can\'t be imported. Check if job exist',
                 'error'
@@ -307,7 +329,12 @@ class Data extends AbstractHelper
                 $e->getMessage(),
                 'error'
             );
-            return false;
+        } finally {
+            $this->sender->sendEmail(
+                $importJob,
+                $file,
+                (int)$result
+            );
         }
 
         return $result;
@@ -320,13 +347,15 @@ class Data extends AbstractHelper
      */
     public function runExport($id, $file)
     {
+        $result = false;
+        $exportJob = $this->exProcessor->getJobModel($id);
+
         try {
             $res = [];
             $history = $this->createExportHistory($id, $file, 'admin');
             $this->exProcessor->debugMode = $this->getDebugMode();
             $this->exProcessor->setLogger($this->logger);
             $result = $this->exProcessor->process($id);
-            $exportJob = $this->exProcessor->getJobModel($id);
             $sourceData = $this->jsonDecoder->decode($exportJob->getExportSource());
             $res = [$result, $sourceData['last_entity_id']];
             $date = $this->timeZone->date();
@@ -335,6 +364,7 @@ class Data extends AbstractHelper
             $history->setFinishedAt($timeStamp);
             $this->historyExRepository->save($history);
         } catch (\Exception $e) {
+            $result = false;
             $this->addLogComment(
                 'Job #' . $id . ' can\'t be exported. Check if job exist',
                 'error'
@@ -342,6 +372,12 @@ class Data extends AbstractHelper
             $this->addLogComment(
                 $e->getMessage(),
                 'error'
+            );
+        } finally {
+            $this->sender->sendEmail(
+                $exportJob,
+                $file,
+                (int)$result
             );
         }
 
@@ -438,7 +474,7 @@ class Data extends AbstractHelper
         $newFile = '';
         if ($this->directory->isFile("/firebear/" . $file . ".log")) {
             foreach ($this->fileLines($file) as $key => $line) {
-                if ($number == 0 || $key > $number) {
+                if ($number == 0 || $key >= $number) {
                     $newFile .= $line;
                 }
             }

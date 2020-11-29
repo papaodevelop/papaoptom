@@ -9,12 +9,14 @@ namespace Firebear\ImportExport\Model\Export;
 use DateTime;
 use Exception;
 use Firebear\ImportExport\Traits\Export\Entity as ExportTrait;
+use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Adapter\AdapterInterface;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Model\AbstractModel;
 use Magento\Framework\Model\ResourceModel\Db\Collection\AbstractCollection;
+use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use Magento\ImportExport\Model\Export\AbstractEntity;
 use Magento\ImportExport\Model\Export\Factory as ExportFactory;
@@ -112,12 +114,23 @@ class Order extends AbstractEntity implements EntityInterface
     protected $_describeTable = [];
 
     /**
+     * @var ProductRepositoryInterface
+     */
+    protected $productRepository;
+
+    /**
+     * @var SearchCriteriaBuilder
+     */
+    protected $searchCriteriaBuilder;
+
+    /**
      * Prefix data
      *
      * @var array
      */
     protected $_prefixData = [
         'sales_order_item' => 'item',
+        'sales_order_product' => 'product',
         'sales_order_address' => 'address',
         'sales_order_payment' => 'payment',
         'sales_payment_transaction' => 'transaction',
@@ -158,6 +171,13 @@ class Order extends AbstractEntity implements EntityInterface
     protected $_status;
 
     /**
+     * Customer groups
+     *
+     * @var array
+     */
+    protected $customerGroup;
+
+    /**
      * Initialize export
      *
      * @param LoggerInterface $logger
@@ -172,6 +192,8 @@ class Order extends AbstractEntity implements EntityInterface
      * @param SourceFactory $sourceFactory
      * @param Helper $helper
      * @param StatusCollectionFactory $statusCollectionFactory
+     * @param ProductRepositoryInterface $productRepository
+     * @param SearchCriteriaBuilder $searchCriteriaBuilder
      * @param array $data
      */
     public function __construct(
@@ -187,6 +209,8 @@ class Order extends AbstractEntity implements EntityInterface
         SourceFactory $sourceFactory,
         Helper $helper,
         StatusCollectionFactory $statusCollectionFactory,
+        ProductRepositoryInterface $productRepository,
+        SearchCriteriaBuilder $searchCriteriaBuilder,
         array $data = []
     ) {
         $this->_logger = $logger;
@@ -197,13 +221,16 @@ class Order extends AbstractEntity implements EntityInterface
         $this->_helper = $helper;
         $this->_statusCollection = $statusCollectionFactory->create();
         $this->_orderCollection = $data['order_collection'] ?? $orderColFactory->create();
+        $this->productRepository = $productRepository;
+        $this->searchCriteriaBuilder = $searchCriteriaBuilder;
         $this->_connection = $resource->getConnection();
 
         parent::__construct(
             $scopeConfig,
             $storeManager,
             $collectionFactory,
-            $resourceColFactory
+            $resourceColFactory,
+            $data
         );
 
         $this->_initStores();
@@ -268,6 +295,24 @@ class Order extends AbstractEntity implements EntityInterface
         return isset($this->_status[$status])
             ? $this->_status[$status]
             : '';
+    }
+
+    /**
+     * Retrieve customer group name
+     *
+     * @param string|null $groupId
+     * @return string
+     */
+    protected function getCustomerGroup($groupId)
+    {
+        if (null === $this->customerGroup) {
+            $sources = $this->_exportConfig['order']['fields']['sales_order']['fields'] ?? [];
+            $options = $sources['customer_group']['options'] ?? [];
+            foreach ($options as $option) {
+                $this->customerGroup[$option['value']] = $option['label'];
+            }
+        }
+        return $this->customerGroup[$groupId] ?? '';
     }
 
     /**
@@ -352,9 +397,13 @@ class Order extends AbstractEntity implements EntityInterface
                     continue;
                 }
                 if (empty($this->_describeTable[$table])) {
-                    $this->_describeTable[$table] = $this->_connection->describeTable(
-                        $this->_resourceModel->getTableName($table)
-                    );
+                    if ($table == 'sales_order_product') {
+                        $this->_describeTable[$table] = array_fill_keys($this->_getExportAttributeCodes(), '');
+                    } else {
+                        $this->_describeTable[$table] = $this->_connection->describeTable(
+                            $this->_resourceModel->getTableName($table)
+                        );
+                    }
                 }
                 $prefix = $this->_prefixData[$table] ?? $table;
                 $row = [];
@@ -368,6 +417,10 @@ class Order extends AbstractEntity implements EntityInterface
 
         $exportData = $item->toArray();
         unset($exportData['store_name']);
+
+        $exportData['customer_group'] = $this->getCustomerGroup(
+            $exportData['customer_group_id'] ?? null
+        );
 
         $exportData['status_label'] = isset($exportData['status'])
             ? $this->_getStatusLabel($exportData['status'])
@@ -418,17 +471,24 @@ class Order extends AbstractEntity implements EntityInterface
         $deps = $this->_parameters['behavior_data']['deps'];
         $children = $this->_exportConfig['order']['fields'] ?? [];
         $entityIds = [];
+        $productIds = [];
 
         if ($this->_isNested()) {
             $exportData = [];
             while ($row = $stmt->fetch()) {
                 $entityIds[] = $row[$entityIdField];
+                if ($table == 'sales_order_item') {
+                    $productIds[] = $row['product_id'];
+                }
                 $exportData[] = ['item' => $this->_updateData($row, $table)];
             }
             $this->_exportData[0][$prefix] = $exportData;
         } else {
             while ($row = $stmt->fetch()) {
                 $entityIds[] = $row[$entityIdField];
+                if ($table == 'sales_order_item') {
+                    $productIds[] = $row['product_id'];
+                }
                 foreach ($row as $column => $value) {
                     $row[$prefix . ':' . $column] = $value;
                     unset($row[$column]);
@@ -464,8 +524,48 @@ class Order extends AbstractEntity implements EntityInterface
 
         foreach ($children as $childTable => $param) {
             if ($param['parent'] == $table && in_array($table, $deps)) {
-                $this->_prepareChildEntity($entityIds, $childTable, $param['parent_field'], $param['main_field']);
+                if ($childTable == 'sales_order_product') {
+                    $this->prepareProduct($productIds);
+                } else {
+                    $this->_prepareChildEntity($entityIds, $childTable, $param['parent_field'], $param['main_field']);
+                }
             }
+        }
+    }
+
+    /**
+     * Prepare product entity
+     *
+     * @param array  $productIds
+     * @return void
+     */
+    protected function prepareProduct($productIds)
+    {
+        $rowId = 0;
+        $this->searchCriteriaBuilder->addFilter('entity_id', $productIds, 'in');
+        $searchCriteria = $this->searchCriteriaBuilder->create();
+        $items = $this->productRepository->getList($searchCriteria)->getItems();
+
+        foreach ($items as $product) {
+            $row = [];
+            $fields = $this->_getExportAttributeCodes();
+            foreach ($fields as $field) {
+                if ('media_gallery' == $field) {
+                    continue;
+                }
+                $value = $product->getData($field);
+                $row['product:' . $field] = is_array($value) ? implode(',', $value): (string)$value;
+            }
+
+            $instr = $this->_scopeFields('sales_order_product');
+            $allFields = $this->_parameters['all_fields'];
+            if (!$allFields) {
+                $row = $this->_changedColumns($row, $instr);
+            } else {
+                $row = $this->_addPartColumns($row, $instr, 'sales_order_product');
+            }
+            $this->_exportData[$rowId] = array_merge($this->_exportData[$rowId], $row);
+            $rowId++;
         }
     }
 
@@ -584,13 +684,23 @@ class Order extends AbstractEntity implements EntityInterface
                     if ($prefix) {
                         $prefix .= ':';
                     }
-                    $model = $this->_sourceFactory->create($values['model']);
                     $options[$name] = [
                         'label' => __($values['label']),
                         'optgroup-name' => $name,
                         'value' => []
                     ];
-                    $fields = $this->getChildHeaders($model);
+
+                    if ($name == 'sales_order_product') {
+                        $fields = $this->_getExportAttributeCodes();
+                    } else {
+                        $model = $this->_sourceFactory->create($values['model']);
+                        $fields = $this->getChildHeaders($model);
+                    }
+
+                    if ($name == 'sales_order') {
+                        $fields[] = 'customer_group';
+                    }
+
                     foreach ($fields as $field) {
                         $options[$name]['value'][] = [
                             'label' => $field,
@@ -615,6 +725,9 @@ class Order extends AbstractEntity implements EntityInterface
         foreach ($this->_exportConfig as $typeName => $type) {
             if ($typeName == 'order') {
                 foreach ($type['fields'] as $name => $values) {
+                    if ($name == 'sales_order_product') {
+                        continue;
+                    }
                     $model = $this->_sourceFactory->create($values['model']);
                     $fields = $this->getChildHeaders($model);
                     $mergeFields = [];
@@ -648,11 +761,18 @@ class Order extends AbstractEntity implements EntityInterface
                 continue;
             }
             foreach ($type['fields'] as $name => $values) {
-                $model = $this->_sourceFactory->create($values['model']);
-                $fields = $this->describeTable($model);
-                foreach ($fields as $key => $field) {
-                    $type = $this->_helper->convertTypesTables($field['DATA_TYPE']);
-                    $options[$name][$key] = ['type' => $type];
+                if ($name == 'sales_order_product') {
+                    $fields = $this->_getExportAttributeCodes();
+                    foreach ($fields as $field) {
+                        $options[$name][$field] = ['type' => 'text'];
+                    }
+                } else {
+                    $model = $this->_sourceFactory->create($values['model']);
+                    $fields = $this->describeTable($model);
+                    foreach ($fields as $key => $field) {
+                        $type = $this->_helper->convertTypesTables($field['DATA_TYPE']);
+                        $options[$name][$key] = ['type' => $type];
+                    }
                 }
             }
         }
@@ -669,6 +789,9 @@ class Order extends AbstractEntity implements EntityInterface
         foreach ($this->_exportConfig as $typeName => $type) {
             if ($typeName == 'order') {
                 foreach ($type['fields'] as $name => $values) {
+                    if ($name == 'sales_order_product') {
+                        continue;
+                    }
                     $mergeFields = [];
                     if (isset($values['fields'])) {
                         $mergeFields = $values['fields'];
@@ -760,7 +883,7 @@ class Order extends AbstractEntity implements EntityInterface
         foreach ($data as $field => $value) {
             $dataType = $info[$field]['DATA_TYPE'] ?? null;
             $type = $dataType ? $this->_helper->convertTypesTables($dataType) : null;
-            if (isset($filters[$field])) {
+            if ('sales_order' != $table && isset($filters[$field])) {
                 if (!isset($this->filters[$table])) {
                     $this->filters[$table] = [];
                 }
@@ -940,12 +1063,16 @@ class Order extends AbstractEntity implements EntityInterface
     }
 
     /**
-     * Retrieve attributes codes which are appropriate for export
+     * Get attributes codes which are appropriate for export
      *
      * @return array
      */
     protected function _getExportAttrCodes()
     {
-        return [];
+        $attrCodes = [];
+        foreach ($this->getAttributeCollection() as $attribute) {
+            $attrCodes[] = $attribute->getAttributeCode();
+        }
+        return $attrCodes;
     }
 }

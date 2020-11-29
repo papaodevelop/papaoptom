@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * @copyright: Copyright © 2017 Firebear Studio. All rights reserved.
  * @author   : Firebear Studio <fbeardev@gmail.com>
@@ -304,7 +305,6 @@ class Processor
             } else {
                 $result = !$importModel->getErrorAggregator()->hasToBeTerminated();
             }
-
         } catch (\Exception $e) {
             $this->addLogComment(
                 'Job #' . $jobId . ' can\'t be imported. Check if job exist',
@@ -368,7 +368,8 @@ class Processor
             if (!empty($this->job->getPriceRules())) {
                 $priceRules = \Zend\Serializer\Serializer::unserialize($this->job->getPriceRules());
             }
-            $this->addLogComment(__('Entity %1', $this->job->getEntity()), $this->output, 'info');
+            $entityName = $this->prepareEntityName($this->job->getEntity());
+            $this->addLogComment(__('Entity %1', $entityName), $this->output, 'info');
 
             $data = array_merge(
                 ['entity' => $this->job->getEntity()],
@@ -393,6 +394,25 @@ class Processor
     }
 
     /**
+     * @param $entity
+     * @return string
+     */
+    public function prepareEntityName($entity)
+    {
+        $map = [
+            'catalog_product' => 'products',
+            'catalog_category' => 'categories',
+            'customer_composite' => 'customers_and_addresses',
+            'customer' => 'customer_main',
+            'sales_rule' => 'cart_price_rule',
+            'search_query' => 'search_terms',
+            'content_hierarchy' => 'page_hierarchy'
+        ];
+
+        return isset($map[$entity]) ? $map[$entity] : $entity;
+    }
+
+    /**
      * Get import model
      *
      * @return \Firebear\ImportExport\Model\Import
@@ -411,7 +431,6 @@ class Processor
      */
     public function changeLocal($local)
     {
-
         $this->setLocal($this->locale->getLocale());
         if (!$this->inConsole) {
             $this->backendConfig->setValue('general/locale/code', $local);
@@ -445,6 +464,9 @@ class Processor
      */
     public function addLogComment($debugData, OutputInterface $output = null, $type = null)
     {
+        if (!$this->inConsole) {
+            $output = null;
+        }
         if (!empty($this->logger->getFilename())) {
             $this->logger->info($debugData);
         }
@@ -526,7 +548,7 @@ class Processor
         } else {
             if ($data['import_source'] != 'file') {
                 $destFile = $importModel->uploadSource();
-                //   $another = 1;
+            //   $another = 1;
             } else {
                 $destFile = $data['file_path'];
             }
@@ -1190,5 +1212,13 @@ class Processor
     public function showErrors()
     {
         $this->getImportModel()->showErrors();
+    }
+
+    /**
+     * @return mixed
+     */
+    public function getJob()
+    {
+        return $this->job;
     }
 }

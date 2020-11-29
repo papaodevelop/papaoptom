@@ -23,9 +23,13 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
 
     /**
      * Entity Type Code
-     *
      */
     const ENTITY_TYPE_CODE = 'order';
+
+    /**
+     * Prefix of Fields
+     */
+    const PREFIX = '';
 
     /**
      * Keys Which Used To Build Result Data Array For Future Update
@@ -36,49 +40,41 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
 
     /**
      * Entity Id Column Name
-     *
      */
     const COLUMN_ENTITY_ID = 'entity_id';
 
     /**
      * Order Item Id Column Name
-     *
      */
     const COLUMN_ORDER_ITEM_ID = 'order_item_id';
 
     /**
      * Shipment Id Column Name
-     *
      */
     const COLUMN_SHIPMENT_ID = 'parent_id';
 
     /**
      * Payment Id Column Name
-     *
      */
     const COLUMN_PAYMENT_ID = 'payment_id';
 
     /**
      * Invoice Id Column Name
-     *
      */
     const COLUMN_INVOICE_ID = 'parent_id';
 
     /**
      * Creditmemo Id Column Name
-     *
      */
     const COLUMN_CREDITMEMO_ID = 'parent_id';
 
     /**
      * Tax Id Column Name
-     *
      */
     const COLUMN_TAX_ID = 'tax_id';
 
     /**
      * Increment Id Column Name
-     *
      */
     const COLUMN_INCREMENT_ID = 'increment_id';
 
@@ -221,6 +217,13 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
      * @var string
      */
     protected $_currentOrderId;
+
+    /**
+     * Quote Ids Deleted
+     *
+     * @var array
+     */
+    public $quoteIdsDeleted = [];
 
     /**
      * Initialize Import
@@ -417,6 +420,17 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
      */
     public function getAllFields()
     {
+        $fields = $this->getTableFieldNames();
+        return static::PREFIX ? $this->addPrefixToFieds($fields) : $fields;
+    }
+
+    /**
+     * Retrieve Table Field Names
+     *
+     * @return array
+     */
+    protected function getTableFieldNames()
+    {
         return array_keys($this->_connection->describeTable(
             $this->_resource->getTableName($this->_mainTable)
         ));
@@ -458,10 +472,14 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
                 $existingIncrementIds = array_filter(array_column($existingIds, 'increment_id'));
             }
             foreach ($bunch as $rowNumber => $rowData) {
-                if ($this->getBehavior() == Import::BEHAVIOR_REPLACE
-                    && !in_array($rowData['increment_id'], $existingIncrementIds)) {
-                    continue;
+                $this->prepareCurrentOrderId($rowData);
+                if (!empty($this->_currentOrderId)) {
+                    if ($this->getBehavior() == Import::BEHAVIOR_REPLACE
+                        && !in_array($this->_currentOrderId, $existingIncrementIds)) {
+                        continue;
+                    }
                 }
+
                 $rowData = $this->prepareRowData($rowData);
                 /* validate data */
                 if (!$rowData || !$this->validateRow($rowData, $rowNumber)) {
@@ -492,6 +510,12 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
                 }
             }
             /* save prepared data */
+            if (isset($this->_parameters['entity']) &&
+                $this->_parameters['entity'] == 'quote' &&
+                $this->getBehavior() == Import::BEHAVIOR_REPLACE
+            ) {
+                $this->quoteIdsDeleted = $toDelete;
+            }
             if ($toCreate || $toUpdate) {
                 $this->_saveEntities($toCreate, $toUpdate);
             }
@@ -510,10 +534,20 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
      */
     public function prepareRowData(array $rowData)
     {
+        return $rowData;
+    }
+
+    /**
+     * Prepare Order Id
+     *
+     * @param array $rowData
+     * @return void
+     */
+    public function prepareCurrentOrderId(array $rowData)
+    {
         if (!empty($rowData[self::COLUMN_INCREMENT_ID])) {
             $this->_currentOrderId = $rowData[self::COLUMN_INCREMENT_ID];
         }
-        return $rowData;
     }
 
     /**
@@ -546,7 +580,7 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
         }
         /* check empty field */
         $empty = true;
-        foreach ($this->getAllFields() as $field) {
+        foreach ($this->getTableFieldNames() as $field) {
             if (!empty($rowData[$field]) && $field != static::COLUMN_ENTITY_ID) {
                 $empty = false;
                 break;
@@ -789,7 +823,7 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
                     );
                 } catch (\Exception $exception) {
                     $this->addLogWriteln(
-                        __('Issue on create at %1 for bind %2', $this->getMainTable(), $bind),
+                        __('Issue on create at %1 for bind %2', $this->getMainTable(), $this->jsonHelper->jsonEncode($bind)),
                         $this->getOutput(),
                         'error'
                     );
@@ -828,7 +862,7 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
         $firstEntity = reset($toUpdate);
         $columnsToUpdate = array_keys($firstEntity);
         $fieldsToUpdate = array_filter(
-            $this->getAllFields(),
+            $this->getTableFieldNames(),
             function ($field) use ($columnsToUpdate) {
                 return in_array($field, $columnsToUpdate);
             }
@@ -846,7 +880,7 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
     protected function _prepareEntityRow(array $entityRow, array $rowData)
     {
         $keys = array_keys($entityRow);
-        foreach ($this->getAllFields() as $field) {
+        foreach ($this->getTableFieldNames() as $field) {
             if (!in_array($field, $keys) && isset($rowData[$field])) {
                 $entityRow[$field] = $rowData[$field];
             }
@@ -897,6 +931,14 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
             case Import::BEHAVIOR_ADD_UPDATE:
                 $this->_validateRowForUpdate($rowData, $rowNumber);
                 break;
+        }
+
+        foreach ($this->getErrorAggregator()->getErrorByRowNumber($rowNumber) as $error) {
+            $this->addLogWriteln(
+                $error->getErrorMessage() . ' ' . __('in row') . ': ' . $rowNumber,
+                $this->output,
+                'error'
+            );
         }
         return !$this->getErrorAggregator()->isRowInvalid($rowNumber);
     }
@@ -1236,5 +1278,27 @@ abstract class AbstractAdapter extends AbstractEntity implements ImportAdapterIn
         return $this->_resource->getTableName(
             $this->_productTable
         );
+    }
+
+    /**
+     * Add Prefix to Field Names
+     *
+     * @param array $fields
+     * @return array
+     */
+    protected function addPrefixToFieds(array $fields)
+    {
+        return array_map([$this, 'addPrefixToFied'], $fields);
+    }
+
+    /**
+     * Add Prefix to Field Name
+     *
+     * @param string $field
+     * @return string
+     */
+    public function addPrefixToFied($field)
+    {
+        return static::PREFIX . ':' . $field;
     }
 }
