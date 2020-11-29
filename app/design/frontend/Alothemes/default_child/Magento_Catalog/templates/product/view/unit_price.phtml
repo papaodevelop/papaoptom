@@ -1,0 +1,8 @@
+<?php $_product = $this->getProduct(); ?>
+
+<div class="unitPrice">
+    <span>Пара:
+        <?php $unitPrice = $_product->getData('price_unit');
+            echo round($unitPrice, 2).' Грн.'; ?>
+    </span>
+</div>
