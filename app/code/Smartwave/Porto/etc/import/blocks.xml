@@ -5791,8 +5791,8 @@
       'jquery',
       'owlcarousel',
       'owlcarousel_thumbs'
-    ], function ($) {
-      var owl_20 = $("#banner-slider-demo-20").owlCarousel({
+    ], function (jquery) {
+      var owl_20 = jquery("#banner-slider-demo-20").owlCarousel({
         items: 1,
         autoplay: true,
         autoplayTimeout: 5000,
@@ -5814,9 +5814,9 @@
     require([
       'jquery',
       'parallax'
-    ], function ($) {
-      $(document).ready(function(){
-        $('.scene').parallax();
+    ], function (jquery) {
+      jquery(document).ready(function(){
+        jquery('.scene').parallax();
       });
     });
   </script>
@@ -5936,8 +5936,8 @@
         require([
             'jquery',
             'owl.carousel/owl.carousel'
-        ], function ($) {
-            var owl_20 = $("#banner-slider-demo-20").owlCarousel({
+        ], function (jquery) {
+            var owl_20 = jquery("#banner-slider-demo-20").owlCarousel({
                 items: 1,
                 autoplay: true,
                 autoplayTimeout: 5000,
@@ -5959,9 +5959,9 @@
         require([
             'jquery',
             'js/jquery.parallax.min'
-        ], function ($) {
+        ], function (jquery) {
             $(document).ready(function(){
-                $('.scene').parallax();
+                jquery('.scene').parallax();
             });
         });
     </script>
