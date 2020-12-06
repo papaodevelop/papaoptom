@@ -1,0 +1,21 @@
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <preference for="Amasty\SeoToolKit\Api\Data\RedirectInterface" type="Amasty\SeoToolKit\Model\Redirect" />
+    <preference for="Amasty\SeoToolKit\Api\RedirectRepositoryInterface" type="Amasty\SeoToolKit\Model\Repository\RedirectRepository" />
+
+    <type name="Magento\Framework\View\Element\UiComponent\DataProvider\CollectionFactory">
+        <arguments>
+            <argument name="collections" xsi:type="array">
+                <item name="amasty_seotoolkit_redirect_listing_data_source"
+                      xsi:type="string">Amasty\SeoToolKit\Model\ResourceModel\Redirect\Grid\Collection</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <type name="Amasty\SeoToolKit\Model\ResourceModel\Redirect\Grid\Collection">
+        <arguments>
+            <argument name="mainTable" xsi:type="string">amasty_seotoolkit_redirect</argument>
+            <argument name="resourceModel" xsi:type="string">Amasty\SeoToolKit\Model\ResourceModel\Redirect</argument>
+        </arguments>
+    </type>
+</config>
