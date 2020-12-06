@@ -147,6 +147,13 @@ class Export extends \Amasty\Orderexport\Helper\Export
         return $img;
     }
 
+    public function getLogoJpgSrc()
+    {
+        $params = array('_secure' => $this->request->isSecure());
+        $img = $this->assetRepo->getUrlWithParams('Dowell_OrdersSuppliers::images/papaoptom_logo.jpg', $params);
+        return $img;
+    }
+
 
     /**
      * @param \Amasty\Orderexport\Model\Profiles $profile
@@ -439,7 +446,10 @@ class Export extends \Amasty\Orderexport\Helper\Export
             );
 
 
-            $logo = $this->getLogoSrc();
+            $logo = $this->getLogoJpgSrc();
+            // $logo = 'http://45.77.243.159/pub/static/version1607227411/adminhtml/Magento/backend/en_US/Dowell_OrdersSuppliers/images/papaoptom_logo.jpg';
+
+              // var_dump($logo); die;
 
             $sheet_num = 1;
             $first_product_row = 6;
@@ -452,7 +462,9 @@ class Export extends \Amasty\Orderexport\Helper\Export
 
                 $forsageImg = $this->getForsageImg();
 
+                // var_dump($forsageImg);
 
+// http://45.77.243.159/pub/media/logo/websites/1/papaoptom_logo_small.png
                 $gdImage = imagecreatefromjpeg($forsageImg);
 
                 $objDrawing = new \PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing();
