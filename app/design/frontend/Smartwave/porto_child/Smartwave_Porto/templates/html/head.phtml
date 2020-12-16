@@ -98,11 +98,11 @@ require([
                         if($(".page-header").hasClass("type2"))
                             $('.page-header .navigation').append($('header.page-header.type2 a.action.my-wishlist').detach());
 
-                        var minicart = $('.page-header .minicart-wrapper').detach();
-                        if($(".page-header").hasClass("type8"))
+
+                        if($(".page-header").hasClass("type8")) {
+                            var minicart = $('.page-header .minicart-wrapper').detach();
                             $('.page-header .menu-wrapper').append(minicart);
-                        else
-                            $('.page-header .navigation').append(minicart);
+                        }
                         
                         <?php if ($this->getConfig('porto_settings/header/sticky_header_logo')): ?>
                         var logo_image = $('<div>').append($('.page-header .header > .logo').clone()).html();
@@ -138,11 +138,11 @@ require([
                     scrolled = false;
                     if((!$(".page-header").hasClass("type12")) && (!$(".page-header").hasClass("type23")) && (!$(".page-header").hasClass("type25")) && (!$(".page-header").hasClass("type26"))) {
                         var minicart;
-                        if($(".page-header").hasClass("type8"))
+                        if($(".page-header").hasClass("type8")) {
                             minicart = $('.page-header .menu-wrapper .minicart-wrapper').detach();
-                        else
-                            minicart = $('.page-header .navigation .minicart-wrapper').detach();
-                        $('.minicart-place').after(minicart);
+                            $('.minicart-place').after(minicart);
+                        }
+
                         $('.minicart-place').remove();
                         if($(".page-header").hasClass("type2"))
                             $('.page-header .block.block-search').before($('.page-header .navigation a.action.my-wishlist').detach());
