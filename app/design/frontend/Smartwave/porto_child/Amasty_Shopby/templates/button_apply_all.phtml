@@ -1,0 +1,20 @@
+<?php if ($block->blockEnabled()) :?>
+    <div class="sidebar-actions">
+        <button id="apply-filter-button" amshopby-apply-filter="1" class="action apply-filter-button"><?=  __('Apply Filter') ?></button>
+    </div>
+    <script>
+        require([
+            'jquery',
+            'applyFilterAll'
+        ], function ($) {
+            //<![CDATA[
+            $('#apply-filter-button').applyFilterAll({
+                "ajaxEnabled": <?= /* @noEscape */ ($block->isAjaxEnabled() ? '1' : '0')?>,
+                "navigationSelector": "<?= $block->escapeHtml($block->getNavigationSelector());?>",
+                "clearUrl": "<?= $block->escapeUrl($block->getClearUrl());?>",
+                "buttonPosition": "<?= $block->escapeHtml($block->getButtonPosition());?>"
+            });
+            //]]>
+        });
+    </script>
+<?php endif;?>

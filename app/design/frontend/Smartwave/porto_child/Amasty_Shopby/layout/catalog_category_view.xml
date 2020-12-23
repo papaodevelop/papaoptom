@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * @author Amasty Team
+ * @copyright Copyright (c) 2020 Amasty (https://www.amasty.com)
+ * @package Amasty_Shopby
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+
+        <referenceBlock name="catalog.leftnav">
+            <block class="Amasty\Shopby\Block\Navigation\ApplyButton" name="apply.button.all" as="apply.button.all" after="-">
+                <action method="setNavigationSelector">
+                    <argument name="selector" xsi:type="string">.sidebar</argument>
+                </action>
+                <action method="setButtonPosition">
+                    <argument name="position" xsi:type="string">sidebar</argument>
+                </action>
+                <action method="setTemplate">
+                    <argument name="template" xsi:type="string">Amasty_Shopby::button_apply_all.phtml</argument>
+                </action>
+            </block>
+        </referenceBlock>
+
+    </body>
+</page>

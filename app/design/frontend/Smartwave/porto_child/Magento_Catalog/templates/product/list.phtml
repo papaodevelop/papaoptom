@@ -68,6 +68,10 @@ $_lazyload = $_portohelper->getConfig('porto_settings/optimization/lazyload');
         <ol class="filterproducts products list items product-items <?php if(isset($_category_config['qty_field']) && $_category_config['qty_field']):?>has-qty<?php endif;?>">
             <?php /** @var $_product \Magento\Catalog\Model\Product */ ?>
             <?php foreach ($_productCollection as $_product): ?>
+                <?php
+                    $productImage = substr(($_imagehelper->init($_product, $image)->resize($image_width, $image_height)->getUrl()),-18);
+                    if ($productImage != "paoptom_logo_1.jpg"):
+                ?>
                 <?php echo($iterator++ == 1) ? '<li class="item product product-item">' : '</li><li class="item product product-item">' ?>
                 <div class="product-item-info type<?php echo $product_type; ?>" data-container="product-grid">
                     <?php // Product Image ?>
@@ -369,6 +373,7 @@ $_lazyload = $_portohelper->getConfig('porto_settings/optimization/lazyload');
                     </div>
                 </div>
                 <?php echo($iterator == count($_productCollection)+1) ? '</li>' : '' ?>
+                <?php endif; ?>
             <?php endforeach; ?>
         </ol>
     </div>
