@@ -23,5 +23,13 @@
             </block>
         </referenceBlock>
 
+        <referenceBlock name="amasty.shopby.jsinit"  remove="true"/>
+            <referenceContainer name="content">
+                <block
+                    class="Amasty\Shopby\Block\Navigation\JsInit"
+                    name="amasty.shopby.jsinit.fix"
+                    after="-"
+                />
+            </referenceContainer>
     </body>
 </page>
