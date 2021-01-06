@@ -22,11 +22,32 @@
                 </action>
             </block>
         </referenceBlock>
-        <referenceBlock name="amasty.shopby.jsinit"  remove="true"/>
         <referenceContainer name="content">
+            <block class="Amasty\Shopby\Block\Navigation\FilterCollapsing\Category" name="catalog.navigation.collapsing"
+                   template="Amasty_Shopby::layer/filter_collapsing.phtml"/>
+            <block class="Amasty\Shopby\Block\Navigation\SwatchesChoose\Category" name="catalog.navigation.swatches.choose"
+                   after="catalog.navigation.collapsing" template="Amasty_Shopby::layer/filter_swatches_choose.phtml"/>
+            <block class="Amasty\Shopby\Block\Navigation\ApplyButton"
+                   name="amasty.shopby.applybutton.sidebar">
+                <action method="setNavigationSelector">
+                    <argument name="selector" xsi:type="string">.sidebar</argument>
+                </action>
+                <action method="setButtonPosition">
+                    <argument name="position" xsi:type="string">sidebar</argument>
+                </action>
+            </block>
+            <block class="Amasty\Shopby\Block\Product\ProductList\Ajax" name="category.amshopby.ajax" template="Amasty_Shopby::product/productlist/ajax.phtml" after="-"/>
+            <block
+                class="Amasty\Shopby\Block\Navigation\Sync"
+                name="Amasty.shopby.navigation.sync"
+            />
+            <block
+                class="Amasty\Shopby\Block\Navigation\UrlModifier"
+                name="Amasty.shopby.navigation.urlmodifier"
+            />
             <block
                 class="Amasty\Shopby\Block\Navigation\JsInit"
-                name="amasty.shopby.jsinit.fix"
+                name="amasty.shopby.jsinit"
                 after="-"
             />
         </referenceContainer>
